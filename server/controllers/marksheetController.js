@@ -57,11 +57,7 @@ async function uploadMarksheet(req, res, next) {
     }
 
     const studentResult = await pool.query(
-      `
-      SELECT id, current_semester_id
-      FROM students
-      WHERE id = $1
-      `,
+      `SELECT id, current_semester_id FROM students WHERE id = $1`,
       [studentId]
     );
 
@@ -74,11 +70,7 @@ async function uploadMarksheet(req, res, next) {
       return res.status(400).json({ error: 'A valid semester is required' });
     }
 
-    const semesterResult = await pool.query(
-      'SELECT id, number FROM semesters WHERE id = $1',
-      [semesterId]
-    );
-
+    const semesterResult = await pool.query('SELECT id, number FROM semesters WHERE id = $1', [semesterId]);
     if (!semesterResult.rows.length) {
       return res.status(400).json({ error: 'Semester not found' });
     }
@@ -90,12 +82,16 @@ async function uploadMarksheet(req, res, next) {
     if (sgpa !== null && (!Number.isFinite(sgpa) || sgpa < 0 || sgpa > 10)) {
       return res.status(400).json({ error: 'SGPA must be between 0 and 10' });
     }
-
     if (cgpa !== null && (!Number.isFinite(cgpa) || cgpa < 0 || cgpa > 10)) {
       return res.status(400).json({ error: 'CGPA must be between 0 and 10' });
     }
 
     const relativePath = `/uploads/marksheets/${req.file.filename}`;
+
+    const existing = await pool.query(
+      `SELECT id, file_path FROM marksheets WHERE student_id = $1 AND semester_id = $2`,
+      [studentId, semesterId]
+    );
 
     const result = await pool.query(
       `
@@ -115,18 +111,14 @@ async function uploadMarksheet(req, res, next) {
         published_at = NOW()
       RETURNING *
       `,
-      [
-        studentId,
-        semesterId,
-        sgpa,
-        cgpa,
-        resultStatus,
-        relativePath,
-        req.file.originalname,
-        req.file.mimetype,
-        faculty.id,
-      ]
+      [studentId, semesterId, sgpa, cgpa, resultStatus, relativePath, req.file.originalname, req.file.mimetype, faculty.id]
     );
+
+    const oldPath = existing.rows[0]?.file_path;
+    if (oldPath && oldPath !== relativePath) {
+      const absoluteOldPath = path.join(__dirname, '..', '..', oldPath.replace(/^\//, ''));
+      try { if (fs.existsSync(absoluteOldPath)) fs.unlinkSync(absoluteOldPath); } catch (_) {}
+    }
 
     res.status(201).json({
       message: 'Marksheet uploaded and published successfully',
@@ -134,12 +126,72 @@ async function uploadMarksheet(req, res, next) {
     });
   } catch (err) {
     if (req.file?.path) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch (_) {
-        // Ignore cleanup failures and return the original error.
-      }
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
     }
+    next(err);
+  }
+}
+
+async function getFacultyMarksheets(req, res, next) {
+  try {
+    const faculty = await getFacultyByUserId(req.user.id);
+    if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
+
+    const result = await pool.query(
+      `
+      SELECT
+        ms.id, ms.student_id, ms.semester_id, ms.sgpa, ms.cgpa,
+        ms.result_status, ms.file_path, ms.file_name, ms.file_type,
+        ms.published_at, ms.created_at,
+        u.full_name AS student_name,
+        s.student_code,
+        sem.number AS semester_number
+      FROM marksheets ms
+      JOIN students s ON s.id = ms.student_id
+      JOIN users u ON u.id = s.user_id
+      JOIN semesters sem ON sem.id = ms.semester_id
+      WHERE ms.file_path IS NOT NULL
+      ORDER BY ms.created_at DESC, u.full_name ASC
+      `
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteMarksheet(req, res, next) {
+  try {
+    const faculty = await getFacultyByUserId(req.user.id);
+    if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
+
+    const marksheetId = Number(req.params.id);
+    if (!Number.isInteger(marksheetId) || marksheetId <= 0) {
+      return res.status(400).json({ error: 'Invalid marksheet id' });
+    }
+
+    const result = await pool.query(
+      `SELECT id, file_path, file_name FROM marksheets WHERE id = $1`,
+      [marksheetId]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Marksheet not found' });
+    }
+
+    const marksheet = result.rows[0];
+    await pool.query('DELETE FROM marksheets WHERE id = $1', [marksheetId]);
+
+    if (marksheet.file_path) {
+      const absolutePath = path.join(__dirname, '..', '..', marksheet.file_path.replace(/^\//, ''));
+      try {
+        if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
+      } catch (_) {}
+    }
+
+    res.json({ message: 'Marksheet deleted successfully', id: marksheetId });
+  } catch (err) {
     next(err);
   }
 }
@@ -149,17 +201,9 @@ async function getStudentMarksheets(req, res, next) {
     const result = await pool.query(
       `
       SELECT
-        ms.id,
-        ms.student_id,
-        ms.semester_id,
-        ms.sgpa,
-        ms.cgpa,
-        ms.result_status,
-        ms.file_path,
-        ms.file_name,
-        ms.file_type,
-        ms.published_at,
-        sem.number AS semester_number
+        ms.id, ms.student_id, ms.semester_id, ms.sgpa, ms.cgpa,
+        ms.result_status, ms.file_path, ms.file_name, ms.file_type,
+        ms.published_at, sem.number AS semester_number
       FROM marksheets ms
       JOIN students st ON st.id = ms.student_id
       JOIN semesters sem ON sem.id = ms.semester_id
@@ -180,5 +224,7 @@ async function getStudentMarksheets(req, res, next) {
 module.exports = {
   searchStudentsForMarksheet,
   uploadMarksheet,
+  getFacultyMarksheets,
+  deleteMarksheet,
   getStudentMarksheets,
 };
