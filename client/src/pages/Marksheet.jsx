@@ -1,5 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
+
+const EXAM_TYPES = [
+  'CT1',
+  'CT2',
+  'INTERNAL',
+  'EXTERNAL',
+  'END SEMESTER',
+];
+
+const examLabel = (examType) => {
+  const normalized = String(examType || '').trim().toUpperCase();
+  return normalized || '-';
+};
 
 export default function Marksheet() {
   const [marks, setMarks] = useState([]);
@@ -27,12 +40,45 @@ export default function Marksheet() {
     loadMarks();
   }, []);
 
+  const normalizedMarks = useMemo(
+    () =>
+      marks.map((mark) => ({
+        ...mark,
+        exam_type: examLabel(mark.exam_type),
+      })),
+    [marks]
+  );
+
+  const subjectRows = useMemo(() => {
+    const grouped = {};
+
+    normalizedMarks.forEach((mark) => {
+      const key = mark.code || mark.subject;
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          subject: mark.subject,
+          code: mark.code,
+          marks: {},
+        };
+      }
+
+      grouped[key].marks[mark.exam_type] = mark;
+    });
+
+    return Object.values(grouped);
+  }, [normalizedMarks]);
+
+  const percentage = (mark) => {
+    if (!mark || !Number(mark.max_marks)) return '-';
+
+    return `${(
+      (Number(mark.obtained_marks) / Number(mark.max_marks)) * 100
+    ).toFixed(1)}%`;
+  };
+
   if (loading) {
-    return (
-      <div className="panel">
-        Loading marks...
-      </div>
-    );
+    return <div className="panel">Loading marks...</div>;
   }
 
   if (error) {
@@ -43,280 +89,153 @@ export default function Marksheet() {
     );
   }
 
-  // Group marks by subject
-  const subjects = {};
-
-  marks.forEach((mark) => {
-    if (!subjects[mark.code]) {
-      subjects[mark.code] = {
-        subject: mark.subject,
-        code: mark.code,
-        ct1: null,
-        ct2: null,
-      };
-    }
-
-    const exam = mark.exam_type?.toLowerCase();
-
-    if (exam === 'ct1') {
-      subjects[mark.code].ct1 = mark;
-    }
-
-    if (exam === 'ct2') {
-      subjects[mark.code].ct2 = mark;
-    }
-  });
-
-  const subjectRows = Object.values(subjects);
-
-  function percentage(mark) {
-    if (!mark || !mark.max_marks) return '-';
-
-    return `${(
-      (Number(mark.obtained_marks) /
-        Number(mark.max_marks)) *
-      100
-    ).toFixed(1)}%`;
-  }
-
   return (
     <div>
       <div className="ledger-heading">
         <h2>Marksheet & Marks</h2>
-
-        <span className="count">
-          Published Marks
-        </span>
+        <span className="count">Published Marks</span>
       </div>
 
       <hr className="ledger-rule" />
 
-      {/* Marks */}
       <div className="panel">
         <div className="ledger-heading">
-          <h2>Internal Assessment</h2>
+          <h2>Subject-wise Marks</h2>
+          <span className="count">{normalizedMarks.length} published entries</span>
         </div>
 
         {subjectRows.length === 0 ? (
           <p>No published marks available.</p>
         ) : (
-          <table className="ledger-table">
-            <thead>
-              <tr>
-                <th>Subject</th>
-                <th>Code</th>
-                <th>CT-1</th>
-                <th>CT-2</th>
-                <th>Average</th>
-              </tr>
-            </thead>
+          <div className="table-wrapper">
+            <table className="ledger-table">
+              <thead>
+                <tr>
+                  <th>Subject</th>
+                  <th>Code</th>
+                  {EXAM_TYPES.map((type) => (
+                    <th key={type}>{type}</th>
+                  ))}
+                </tr>
+              </thead>
 
-            <tbody>
-              {subjectRows.map((row) => {
-                const ct1 = row.ct1
-                  ? Number(row.ct1.obtained_marks)
-                  : null;
-
-                const ct2 = row.ct2
-                  ? Number(row.ct2.obtained_marks)
-                  : null;
-
-                const values = [ct1, ct2].filter(
-                  (value) => value !== null
-                );
-
-                const average =
-                  values.length > 0
-                    ? (
-                        values.reduce(
-                          (sum, value) => sum + value,
-                          0
-                        ) / values.length
-                      ).toFixed(1)
-                    : '-';
-
-                return (
-                  <tr key={row.code}>
+              <tbody>
+                {subjectRows.map((row) => (
+                  <tr key={row.code || row.subject}>
                     <td>{row.subject}</td>
-
                     <td>
-                      <span className="code-stamp">
-                        {row.code}
-                      </span>
+                      <span className="code-stamp">{row.code}</span>
                     </td>
 
-                    <td>
-                      {row.ct1
-                        ? `${row.ct1.obtained_marks}/${row.ct1.max_marks}`
-                        : '-'}
-                    </td>
+                    {EXAM_TYPES.map((type) => {
+                      const mark = row.marks[type];
 
-                    <td>
-                      {row.ct2
-                        ? `${row.ct2.obtained_marks}/${row.ct2.max_marks}`
-                        : '-'}
-                    </td>
-
-                    <td>
-                      {average === '-'
-                        ? '-'
-                        : `${average}%`}
-                    </td>
+                      return (
+                        <td key={type}>
+                          {mark ? (
+                            <div>
+                              <strong>
+                                {mark.obtained_marks}/{mark.max_marks}
+                              </strong>
+                              <br />
+                              <small>{mark.grade || '-'} · {percentage(mark)}</small>
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                      );
+                    })}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-{/* Detailed Marks */}
+      {EXAM_TYPES.map((examType) => {
+        const examMarks = normalizedMarks.filter(
+          (mark) => mark.exam_type === examType
+        );
 
-<div className="panel">
-  <div className="ledger-heading">
-    <h2>CT-1 Marks</h2>
-  </div>
+        return (
+          <div className="panel" key={examType}>
+            <div className="ledger-heading">
+              <h2>{examType} Marks</h2>
+              <span className="count">{examMarks.length} subjects</span>
+            </div>
 
-  {marks.filter((mark) => mark.exam_type === 'ct1').length === 0 ? (
-    <p>No CT-1 marks available.</p>
-  ) : (
-    <table className="ledger-table">
-      <thead>
-        <tr>
-          <th>Subject</th>
-          <th>Code</th>
-          <th>Marks</th>
-          <th>Percentage</th>
-          <th>Grade</th>
-        </tr>
-      </thead>
+            {examMarks.length === 0 ? (
+              <p>No published {examType} marks available.</p>
+            ) : (
+              <div className="table-wrapper">
+                <table className="ledger-table">
+                  <thead>
+                    <tr>
+                      <th>Subject</th>
+                      <th>Code</th>
+                      <th>Marks</th>
+                      <th>Percentage</th>
+                      <th>Grade</th>
+                    </tr>
+                  </thead>
 
-      <tbody>
-        {marks
-          .filter((mark) => mark.exam_type === 'ct1')
-          .map((mark, index) => (
-            <tr key={`ct1-${mark.code}-${index}`}>
-              <td>{mark.subject}</td>
+                  <tbody>
+                    {examMarks.map((mark, index) => (
+                      <tr key={`${examType}-${mark.code}-${index}`}>
+                        <td>{mark.subject}</td>
+                        <td>
+                          <span className="code-stamp">{mark.code}</span>
+                        </td>
+                        <td>
+                          {mark.obtained_marks}/{mark.max_marks}
+                        </td>
+                        <td>{percentage(mark)}</td>
+                        <td>{mark.grade || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
-              <td>
-                <span className="code-stamp">
-                  {mark.code}
-                </span>
-              </td>
-
-              <td>
-                {mark.obtained_marks}/{mark.max_marks}
-              </td>
-
-              <td>
-                {percentage(mark)}
-              </td>
-
-              <td>
-                {mark.grade || '-'}
-              </td>
-            </tr>
-          ))}
-      </tbody>
-    </table>
-  )}
-</div>
-
-<div className="panel">
-  <div className="ledger-heading">
-    <h2>CT-2 Marks</h2>
-  </div>
-
-  {marks.filter((mark) => mark.exam_type === 'ct2').length === 0 ? (
-    <p>No CT-2 marks available.</p>
-  ) : (
-    <table className="ledger-table">
-      <thead>
-        <tr>
-          <th>Subject</th>
-          <th>Code</th>
-          <th>Marks</th>
-          <th>Percentage</th>
-          <th>Grade</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {marks
-          .filter((mark) => mark.exam_type === 'ct2')
-          .map((mark, index) => (
-            <tr key={`ct2-${mark.code}-${index}`}>
-              <td>{mark.subject}</td>
-
-              <td>
-                <span className="code-stamp">
-                  {mark.code}
-                </span>
-              </td>
-
-              <td>
-                {mark.obtained_marks}/{mark.max_marks}
-              </td>
-
-              <td>
-                {percentage(mark)}
-              </td>
-
-              <td>
-                {mark.grade || '-'}
-              </td>
-            </tr>
-          ))}
-      </tbody>
-    </table>
-  )}
-</div>
-
-      {/* Published Marksheet */}
       <div className="panel">
         <div className="ledger-heading">
           <h2>Published Marksheets</h2>
         </div>
 
         {marksheets.length === 0 ? (
-          <p>
-            No published marksheet available yet.
-          </p>
+          <p>No published marksheet available yet.</p>
         ) : (
-          <table className="ledger-table">
-            <thead>
-              <tr>
-                <th>Semester</th>
-                <th>SGPA</th>
-                <th>CGPA</th>
-                <th>Published</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {marksheets.map((sheet, index) => (
-                <tr key={sheet.id || index}>
-                  <td>
-                    Semester {sheet.semester_number}
-                  </td>
-
-                  <td>
-                    {sheet.sgpa ?? '-'}
-                  </td>
-
-                  <td>
-                    {sheet.cgpa ?? '-'}
-                  </td>
-
-                  <td>
-                    <span className="pill pill-good">
-                      Published
-                    </span>
-                  </td>
+          <div className="table-wrapper">
+            <table className="ledger-table">
+              <thead>
+                <tr>
+                  <th>Semester</th>
+                  <th>SGPA</th>
+                  <th>CGPA</th>
+                  <th>Published</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {marksheets.map((sheet, index) => (
+                  <tr key={sheet.id || index}>
+                    <td>Semester {sheet.semester_number}</td>
+                    <td>{sheet.sgpa ?? '-'}</td>
+                    <td>{sheet.cgpa ?? '-'}</td>
+                    <td>
+                      <span className="pill pill-good">Published</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

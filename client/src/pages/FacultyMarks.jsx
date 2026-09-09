@@ -1,715 +1,367 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../services/api';
 
-const EXAM_TYPES = [
-  'CT1',
-  'CT2',
-  'INTERNAL',
-  'EXTERNAL',
-  'END SEMESTER',
-];
+const EXAM_TYPES = ['CT1', 'CT2', 'INTERNAL', 'EXTERNAL', 'END SEMESTER'];
 
-const externalOnly = (subject) => {
-  const name = String(subject?.name || '').toLowerCase();
-  const code = String(subject?.code || '').toLowerCase();
-  const category = String(subject?.subject_category || '').toLowerCase();
+const isExternalOnly = (subject) => Boolean(subject?.externalOnly);
 
-  return (
-    category === 'liberal_learning' ||
-    category === 'liberal learning' ||
-    name.includes('micro project') ||
-    code.includes('micro') ||
-    name.includes('lab') ||
-    code.includes('lab') ||
-    name.includes('liberal learning') ||
-    code.startsWith('llm')
-  );
-};
-
-const calculateGrade = (obtained, maximum) => {
-  const obtainedMarks = Number(obtained);
-  const maxMarks = Number(maximum);
-
-  if (!Number.isFinite(obtainedMarks) || !Number.isFinite(maxMarks) || maxMarks <= 0) {
-    return '-';
-  }
-
-  const percentage = (obtainedMarks / maxMarks) * 100;
-
+function calculateGrade(obtained, maximum) {
+  const o = Number(obtained);
+  const m = Number(maximum);
+  if (!Number.isFinite(o) || !Number.isFinite(m) || m <= 0) return '—';
+  const percentage = (o / m) * 100;
   if (percentage >= 90) return 'A+';
   if (percentage >= 80) return 'A';
   if (percentage >= 70) return 'B+';
   if (percentage >= 60) return 'B';
   if (percentage >= 50) return 'C';
   if (percentage >= 40) return 'D';
-
   return 'F';
-};
+}
 
 export default function FacultyMarks() {
-  // ------------------------------------------------------------
-  // Student search
-  // ------------------------------------------------------------
   const [search, setSearch] = useState('');
-  const [students, setStudents] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState(null);
-
-  // ------------------------------------------------------------
-  // Marks
-  // ------------------------------------------------------------
-  const [examType, setExamType] = useState('CT1');
+  const [student, setStudent] = useState(null);
   const [subjects, setSubjects] = useState([]);
-
-  // Each subject gets its own maximum marks
-  // Example:
-  // {
-  //   1: "20",
-  //   2: "25"
-  // }
+  const [examType, setExamType] = useState('CT1');
+  const [marks, setMarks] = useState({});
   const [maxMarks, setMaxMarks] = useState({});
-
-  // Each subject gets its own obtained marks
-  const [obtainedMarks, setObtainedMarks] = useState({});
-
-  const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [message, setMessage] = useState('');
 
-  // ------------------------------------------------------------
-  // Search students
-  // ------------------------------------------------------------
-  const handleSearch = async (e) => {
+  async function handleSearch(e) {
     e.preventDefault();
-
-    const value = search.trim();
-
-    if (!value) {
-      setStudents([]);
-      setError('Enter a student name or student code.');
+    setError('');
+    setMessage('');
+    setSearchResults([]);
+    if (!search.trim()) {
+      setError('Enter student name or student code.');
       return;
     }
-
     try {
-      setError('');
-      setSuccess('');
       setSearching(true);
-
-      const result = await api.searchStudentsForMarks(value);
-
-      setStudents(Array.isArray(result) ? result : []);
+      const data = await api.searchStudentsForMarks(search.trim());
+      const results = Array.isArray(data) ? data : [];
+      setSearchResults(results);
+      if (!results.length) setError('No student found.');
     } catch (err) {
-      console.error(err);
-      setStudents([]);
       setError(err.message || 'Unable to search students.');
     } finally {
       setSearching(false);
     }
-  };
+  }
 
-  // ------------------------------------------------------------
-  // Select student
-  // ------------------------------------------------------------
-  const handleSelectStudent = async (student) => {
-    try {
-      setSelectedStudent(student);
-      setStudents([]);
-      setSearch('');
-      setError('');
-      setSuccess('');
-
-      // Reset current marks
-      setMaxMarks({});
-      setObtainedMarks({});
-
-      await loadStudentSubjects(student.id);
-    } catch (err) {
-      console.error(err);
-      setError(err.message || 'Unable to load student.');
-    }
-  };
-
-  // ------------------------------------------------------------
-  // Load student's enrolled subjects
-  // ------------------------------------------------------------
-  const loadStudentSubjects = async (studentId) => {
-    try {
-      setLoadingSubjects(true);
-      setError('');
-
-      const response = await api.getStudentSubjectsForMarks(studentId);
-
-      const loadedSubjects = Array.isArray(response)
-        ? response
-        : Array.isArray(response?.subjects)
-          ? response.subjects
-          : [];
-
-      setSubjects(loadedSubjects);
-
-      if (!loadedSubjects.length) {
-        setError(
-          'This student has no approved/enrolled subjects. Check the student subject enrollment and elective approval.'
-        );
-      }
-    } catch (err) {
-      console.error(err);
-      setSubjects([]);
-      setError(err.message || 'Unable to load student subjects.');
-    } finally {
-      setLoadingSubjects(false);
-    }
-  };
-
-  // ------------------------------------------------------------
-  // Load marks whenever exam type changes
-  // ------------------------------------------------------------
-  useEffect(() => {
-    if (!selectedStudent) return;
-
-    loadExamMarks(selectedStudent.id, examType);
-  }, [selectedStudent, examType]);
-
-  // ------------------------------------------------------------
-  // Load existing marks for selected exam
-  // ------------------------------------------------------------
-  const loadExamMarks = async (studentId, selectedExamType) => {
-    try {
-      setLoadingSubjects(true);
-      setError('');
-      setSuccess('');
-
-      const response = await api.getStudentMarksForExam(
-        studentId,
-        selectedExamType
-      );
-
-      const loadedSubjects = Array.isArray(response)
-        ? response
-        : Array.isArray(response?.subjects)
-          ? response.subjects
-          : [];
-
-      setSubjects(loadedSubjects);
-
-      const newMaxMarks = {};
-      const newObtainedMarks = {};
-
-      loadedSubjects.forEach((subject) => {
-        const id = subject.id;
-
-        const mark = subject.mark || subject.marks || null;
-
-        if (mark) {
-          if (
-            mark.maxMarks !== undefined &&
-            mark.maxMarks !== null &&
-            mark.maxMarks !== ''
-          ) {
-            newMaxMarks[id] = String(mark.maxMarks);
-          }
-
-          if (
-            mark.obtainedMarks !== undefined &&
-            mark.obtainedMarks !== null &&
-            mark.obtainedMarks !== ''
-          ) {
-            newObtainedMarks[id] = String(mark.obtainedMarks);
-          }
-        }
-      });
-
-      setMaxMarks(newMaxMarks);
-      setObtainedMarks(newObtainedMarks);
-    } catch (err) {
-      console.error(err);
-      setError(err.message || 'Unable to load marks.');
-    } finally {
-      setLoadingSubjects(false);
-    }
-  };
-
-  // ------------------------------------------------------------
-  // Maximum marks change
-  // ------------------------------------------------------------
-  const handleMaxMarksChange = (subjectId, value) => {
-    setMaxMarks((previous) => ({
-      ...previous,
-      [subjectId]: value,
-    }));
-
+  async function selectStudent(selectedStudent) {
     setError('');
-    setSuccess('');
-  };
-
-  // ------------------------------------------------------------
-  // Obtained marks change
-  // ------------------------------------------------------------
-  const handleObtainedMarksChange = (subjectId, value) => {
-    setObtainedMarks((previous) => ({
-      ...previous,
-      [subjectId]: value,
-    }));
-
-    setError('');
-    setSuccess('');
-  };
-
-  // ------------------------------------------------------------
-  // Search another student
-  // ------------------------------------------------------------
-  const handleSearchAnotherStudent = () => {
-    setSelectedStudent(null);
+    setMessage('');
+    setStudent(selectedStudent);
+    setSearch(selectedStudent.student_code || selectedStudent.student_name || '');
+    setSearchResults([]);
     setSubjects([]);
+    setMarks({});
     setMaxMarks({});
-    setObtainedMarks({});
-    setSearch('');
-    setStudents([]);
+
+    try {
+      setLoading(true);
+      const data = await api.getStudentSubjectsForMarks(selectedStudent.id);
+      const loadedStudent = data?.student || selectedStudent;
+      const loadedSubjects = Array.isArray(data?.subjects) ? data.subjects : [];
+      setStudent(loadedStudent);
+      setSubjects(loadedSubjects);
+      await loadMarks(selectedStudent.id, examType, loadedSubjects);
+    } catch (err) {
+      setError(err.message || 'Unable to load student subjects.');
+      setSubjects([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadMarks(studentId, selectedExam, subjectList = subjects) {
+    if (!studentId) return;
+    try {
+      setLoading(true);
+      const data = await api.getStudentMarksForExam(studentId, selectedExam);
+      const loadedSubjects = Array.isArray(data?.subjects) ? data.subjects : subjectList;
+      setSubjects(loadedSubjects || []);
+
+      const nextMarks = {};
+      const nextMaxMarks = {};
+      (loadedSubjects || []).forEach((subject) => {
+        nextMarks[subject.id] =
+          subject.mark?.obtainedMarks !== undefined && subject.mark?.obtainedMarks !== null
+            ? String(subject.mark.obtainedMarks)
+            : '';
+        nextMaxMarks[subject.id] =
+          subject.mark?.maxMarks !== undefined && subject.mark?.maxMarks !== null
+            ? String(subject.mark.maxMarks)
+            : '';
+      });
+      setMarks(nextMarks);
+      setMaxMarks(nextMaxMarks);
+    } catch (err) {
+      setError(err.message || 'Unable to load existing marks.');
+      setMarks({});
+      setMaxMarks({});
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleExamChange(e) {
+    const selectedExam = e.target.value;
+    setExamType(selectedExam);
     setError('');
-    setSuccess('');
-    setExamType('CT1');
-  };
+    setMessage('');
+    if (student) await loadMarks(student.id, selectedExam, subjects);
+  }
 
-  // ------------------------------------------------------------
-  // Visible subjects for current exam
-  //
-  // Lab / Micro Project / Liberal Learning:
-  // EXTERNAL ONLY
-  //
-  // Other subjects:
-  // CT1, CT2, INTERNAL, EXTERNAL, END SEMESTER
-  // ------------------------------------------------------------
-  const visibleSubjects = useMemo(() => {
-    if (examType === 'EXTERNAL') {
-      return subjects;
-    }
+  function handleNumericChange(setter, subjectId, value) {
+    if (value !== '' && !/^\d*\.?\d*$/.test(value)) return;
+    setter((previous) => ({ ...previous, [subjectId]: value }));
+  }
 
-    return subjects.filter((subject) => !externalOnly(subject));
-  }, [subjects, examType]);
-
-  // ------------------------------------------------------------
-  // Validate marks
-  // ------------------------------------------------------------
-  const validateMarks = () => {
-    for (const subject of visibleSubjects) {
-      const subjectId = subject.id;
-
-      const maximum = maxMarks[subjectId];
-      const obtained = obtainedMarks[subjectId];
-
-      // Allow completely empty rows.
-      // Faculty can save marks for only the subjects they have entered.
-      if (
-        (maximum === undefined || maximum === '') &&
-        (obtained === undefined || obtained === '')
-      ) {
-        continue;
-      }
-
-      if (maximum === undefined || maximum === '') {
-        return `Enter maximum marks for ${subject.name}.`;
-      }
-
-      if (obtained === undefined || obtained === '') {
-        return `Enter obtained marks for ${subject.name}.`;
-      }
-
-      const max = Number(maximum);
-      const obtainedValue = Number(obtained);
-
-      if (!Number.isFinite(max) || max <= 0) {
-        return `Maximum marks for ${subject.name} must be greater than 0.`;
-      }
-
-      if (!Number.isFinite(obtainedValue) || obtainedValue < 0) {
-        return `Obtained marks for ${subject.name} cannot be negative.`;
-      }
-
-      if (obtainedValue > max) {
-        return `${subject.name}: obtained marks cannot be greater than maximum marks (${max}).`;
-      }
-    }
-
-    return '';
-  };
-
-  // ------------------------------------------------------------
-  // Save marks
-  // ------------------------------------------------------------
-  const handleSaveMarks = async () => {
-    if (!selectedStudent) {
+  async function handleSave(e) {
+    e.preventDefault();
+    setError('');
+    setMessage('');
+    if (!student) {
       setError('Please select a student first.');
       return;
     }
 
-    const validationError = validateMarks();
+    const applicableSubjects = subjects.filter(
+      (subject) => !isExternalOnly(subject) || examType === 'EXTERNAL'
+    );
+    const marksData = [];
 
-    if (validationError) {
-      setError(validationError);
-      setSuccess('');
-      return;
+    for (const subject of applicableSubjects) {
+      const obtainedValue = marks[subject.id];
+      const maxValue = maxMarks[subject.id];
+      if (obtainedValue === '' || obtainedValue === undefined || obtainedValue === null) continue;
+
+      if (maxValue === '' || maxValue === undefined || maxValue === null) {
+        setError(`Enter maximum marks for ${subject.name}.`);
+        return;
+      }
+      const max = Number(maxValue);
+      const obtained = Number(obtainedValue);
+      if (!Number.isFinite(max) || max <= 0) {
+        setError(`Maximum marks for ${subject.name} must be greater than 0.`);
+        return;
+      }
+      if (!Number.isFinite(obtained) || obtained < 0 || obtained > max) {
+        setError(`Marks for ${subject.name} must be between 0 and ${max}.`);
+        return;
+      }
+      marksData.push({
+        subjectId: Number(subject.id),
+        maxMarks: max,
+        obtainedMarks: obtained,
+      });
     }
 
-    const marks = visibleSubjects
-      .filter((subject) => {
-        const maximum = maxMarks[subject.id];
-        const obtained = obtainedMarks[subject.id];
-
-        return (
-          maximum !== undefined &&
-          maximum !== '' &&
-          obtained !== undefined &&
-          obtained !== ''
-        );
-      })
-      .map((subject) => ({
-        subjectId: subject.id,
-        maxMarks: Number(maxMarks[subject.id]),
-        obtainedMarks: Number(obtainedMarks[subject.id]),
-      }));
-
-    if (!marks.length) {
-      setError('Enter marks for at least one subject before saving.');
+    if (!marksData.length) {
+      setError('Enter at least one subject mark.');
       return;
     }
 
     try {
       setSaving(true);
-      setError('');
-      setSuccess('');
-
-      await api.saveBulkMarks({
-        studentId: selectedStudent.id,
+      const result = await api.saveBulkMarks({
+        studentId: student.id,
         examType,
-        marks,
+        marks: marksData,
       });
-
-      setSuccess(
-        `${examType} marks saved successfully for ${selectedStudent.student_name || selectedStudent.name}.`
-      );
-
-      // Reload so the saved values are confirmed from database
-      await loadExamMarks(selectedStudent.id, examType);
+      setMessage(result?.message || 'Marks saved successfully.');
+      await loadMarks(student.id, examType, subjects);
     } catch (err) {
-      console.error(err);
       setError(err.message || 'Unable to save marks.');
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  // ------------------------------------------------------------
-  // Render
-  // ------------------------------------------------------------
+  function handleAnotherStudent() {
+    setStudent(null);
+    setSubjects([]);
+    setMarks({});
+    setMaxMarks({});
+    setSearch('');
+    setSearchResults([]);
+    setError('');
+    setMessage('');
+    setExamType('CT1');
+  }
+
+  const visibleSubjects = subjects.filter(
+    (subject) => !isExternalOnly(subject) || examType === 'EXTERNAL'
+  );
+
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="faculty-marks-page">
+      <div className="marks-hero">
         <div>
-          <h1 className="ledger-heading">
-            Faculty Marks
-            <span className="count">Student-wise entry</span>
-          </h1>
-
-          <div className="ledger-rule" />
+          <h1>Faculty Marks</h1>
+          <p>Enter examination marks student-by-student.</p>
         </div>
+        <div className="marks-step"><strong>MARKS</strong> / FACULTY ENTRY</div>
       </div>
+      <hr className="ledger-rule" />
 
-      {/* ========================================================
-          STUDENT SEARCH
-      ======================================================== */}
-      {!selectedStudent && (
-        <div className="panel">
-          <h2>Search Student</h2>
+      {error && <div className="error-box">{error}</div>}
+      {message && <div className="message">{message}</div>}
 
+      {!student ? (
+        <div className="panel marks-card">
+          <div className="section-title">
+            <h3>1. Search Student</h3>
+          </div>
           <form onSubmit={handleSearch}>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Student Name / Student Code</label>
-
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="e.g. Kshitij or CSE2025001"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="btn"
-                disabled={searching}
-              >
+            <label className="field-label">Student name or student code</label>
+            <div className="search-row">
+              <input
+                className="marks-input"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="e.g. Kshitij or CSE2025001"
+              />
+              <button type="submit" className="btn" disabled={searching}>
                 {searching ? 'Searching...' : 'Search Student'}
               </button>
             </div>
           </form>
 
-          {students.length > 0 && (
-            <div className="student-results">
-              <h3>Search Results</h3>
-
-              {students.map((student) => (
-                <button
-                  key={student.id}
-                  type="button"
-                  className="student-result"
-                  onClick={() => handleSelectStudent(student)}
-                >
-                  <div>
-                    <strong>
-                      {student.student_name || student.name}
-                    </strong>
-
-                    <span>
-                      {student.student_code || student.code || ''}
-                    </span>
-
-                    {student.email && (
-                      <small>{student.email}</small>
-                    )}
-                  </div>
-
-                  <span> Select → </span>
+          {searchResults.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <label className="field-label">Search results</label>
+              {searchResults.map((result) => (
+                <button key={result.id} type="button" className="student-result" onClick={() => selectStudent(result)}>
+                  <span>
+                    <strong>{result.student_name}</strong>
+                    <small>{result.student_code}{result.email ? ` · ${result.email}` : ''}</small>
+                  </span>
+                  <strong>Select →</strong>
                 </button>
               ))}
             </div>
           )}
-
-          {!searching &&
-            search.trim() &&
-            students.length === 0 &&
-            !error && (
-              <p>No students found.</p>
-            )}
         </div>
-      )}
-
-      {/* ========================================================
-          SELECTED STUDENT
-      ======================================================== */}
-      {selectedStudent && (
+      ) : (
         <>
-          <div className="panel student-header">
-            <div>
-              <h2>
-                {selectedStudent.student_name ||
-                  selectedStudent.name}
-              </h2>
-
-              <p>
-                {selectedStudent.student_code ||
-                  selectedStudent.code ||
-                  ''}
-              </p>
-
-              {selectedStudent.email && (
-                <p>{selectedStudent.email}</p>
-              )}
+          <div className="panel marks-card">
+            <div className="student-banner">
+              <div>
+                <div className="field-label">Selected student</div>
+                <h3>{student.student_name}</h3>
+                <div className="student-meta">
+                  {student.student_code}{student.email ? ` · ${student.email}` : ''}
+                </div>
+              </div>
+              <button type="button" className="btn btn-outline" onClick={handleAnotherStudent}>
+                Search Another Student
+              </button>
             </div>
-
-            <button
-              type="button"
-              className="btn"
-              onClick={handleSearchAnotherStudent}
-            >
-              Search Another Student
-            </button>
           </div>
 
-          {/* ======================================================
-              EXAM TYPE
-          ====================================================== */}
-          <div className="panel">
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="examType">
-                  Exam Type
-                </label>
-
-                <select
-                  id="examType"
-                  value={examType}
-                  onChange={(e) =>
-                    setExamType(e.target.value)
-                  }
-                >
-                  {EXAM_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
+          <div className="panel marks-card">
+            <div className="section-title">
+              <h3>2. Select Examination</h3>
+            </div>
+            <div className="exam-row">
+              <div>
+                <label className="field-label">Examination type</label>
+                <select className="exam-select" value={examType} onChange={handleExamChange}>
+                  {EXAM_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
                 </select>
               </div>
+              <p className="exam-note">
+                <strong>External-only:</strong> Lab subjects, Micro Project and Liberal Learning appear only under EXTERNAL.
+                Open Elective remains a regular subject.
+              </p>
             </div>
-
-            <p className="helper-text">
-              Maximum marks and obtained marks are entered
-              separately for every subject.
-            </p>
-
-            <p className="helper-text">
-              Micro Project, Lab and Liberal Learning subjects
-              are EXTERNAL-only.
-            </p>
           </div>
 
-          {/* ======================================================
-              MARKS TABLE
-          ====================================================== */}
-          <div className="panel">
-            <div className="marks-title">
-              <h2>
-                {examType} Marks
-                <span className="count">
-                  {visibleSubjects.length} subjects
-                </span>
-              </h2>
+          <div className="panel marks-card">
+            <div className="section-title">
+              <h3>3. {examType} Marks</h3>
+              <span className="count">{visibleSubjects.length} subjects</span>
             </div>
 
-            {loadingSubjects ? (
-              <p>Loading subjects...</p>
+            {loading ? (
+              <p>Loading subjects and marks...</p>
             ) : visibleSubjects.length === 0 ? (
-              <p>
-                This student has no subjects available for{' '}
-                {examType}.
-              </p>
+              <p>No enrolled subjects are available for {examType}.</p>
             ) : (
-              <div className="table-wrapper">
-                <table className="marks-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>SUBJECT</th>
-                      <th>CODE</th>
-                      <th>MAXIMUM MARKS</th>
-                      <th>OBTAINED MARKS</th>
-                      <th>GRADE</th>
-                    </tr>
-                  </thead>
+              <form onSubmit={handleSave}>
+                <div className="marks-table-wrap">
+                  <table className="marks-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Subject</th>
+                        <th>Code</th>
+                        <th>Maximum</th>
+                        <th>Obtained</th>
+                        <th>Grade</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleSubjects.map((subject, index) => (
+                        <tr key={subject.id}>
+                          <td>{String(index + 1).padStart(2, '0')}</td>
+                          <td>
+                            <div className="subject-name">{subject.name}</div>
+                            {subject.externalOnly && <span className="subject-note">External only</span>}
+                          </td>
+                          <td><span className="subject-code">{subject.code}</span></td>
+                          <td>
+                            <input
+                              className="mark-input"
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              value={maxMarks[subject.id] || ''}
+                              onChange={(e) => handleNumericChange(setMaxMarks, subject.id, e.target.value)}
+                              placeholder="e.g. 20"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              className="mark-input"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={marks[subject.id] || ''}
+                              onChange={(e) => handleNumericChange(setMarks, subject.id, e.target.value)}
+                              placeholder="Obtained"
+                            />
+                          </td>
+                          <td className="grade-cell">
+                            {calculateGrade(marks[subject.id], maxMarks[subject.id])}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-                  <tbody>
-                    {visibleSubjects.map(
-                      (subject, index) => {
-                        const subjectId = subject.id;
-
-                        const maximum =
-                          maxMarks[subjectId] ?? '';
-
-                        const obtained =
-                          obtainedMarks[subjectId] ?? '';
-
-                        const grade =
-                          calculateGrade(
-                            obtained,
-                            maximum
-                          );
-
-                        return (
-                          <tr key={subjectId}>
-                            <td>{index + 1}</td>
-
-                            <td>
-                              <strong>
-                                {subject.name}
-                              </strong>
-
-                              {externalOnly(subject) && (
-                                <small className="subject-note">
-                                  EXTERNAL ONLY
-                                </small>
-                              )}
-                            </td>
-
-                            <td>
-                              <span className="subject-code">
-                                {subject.code}
-                              </span>
-                            </td>
-
-                            {/* ----------------------------------
-                                MAXIMUM MARKS
-                            ---------------------------------- */}
-                            <td>
-                              <input
-                                type="number"
-                                min="1"
-                                step="0.01"
-                                value={maximum}
-                                placeholder="Max Marks"
-                                onChange={(e) =>
-                                  handleMaxMarksChange(
-                                    subjectId,
-                                    e.target.value
-                                  )
-                                }
-                              />
-                            </td>
-
-                            {/* ----------------------------------
-                                OBTAINED MARKS
-                            ---------------------------------- */}
-                            <td>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={obtained}
-                                placeholder="Obtained"
-                                onChange={(e) =>
-                                  handleObtainedMarksChange(
-                                    subjectId,
-                                    e.target.value
-                                  )
-                                }
-                              />
-                            </td>
-
-                            {/* ----------------------------------
-                                GRADE
-                            ---------------------------------- */}
-                            <td>
-                              <strong>{grade}</strong>
-                            </td>
-                          </tr>
-                        );
-                      }
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {visibleSubjects.length > 0 && (
-              <div className="marks-actions">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={handleSaveMarks}
-                  disabled={saving || loadingSubjects}
-                >
-                  {saving ? 'Saving...' : 'Save Marks'}
-                </button>
-              </div>
+                <div className="marks-footer">
+                  <button type="submit" className="btn" disabled={saving}>
+                    {saving ? 'Saving Marks...' : `Save ${examType} Marks`}
+                  </button>
+                  <span style={{ color: 'var(--muted-text)', fontSize: 12 }}>
+                    Maximum and obtained marks are stored separately for every subject.
+                  </span>
+                </div>
+              </form>
             )}
           </div>
         </>
-      )}
-
-      {/* ========================================================
-          MESSAGES
-      ======================================================== */}
-      {error && (
-        <div className="error-text">
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div className="success-text">
-          {success}
-        </div>
       )}
     </div>
   );
