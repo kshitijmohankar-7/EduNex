@@ -152,12 +152,28 @@ async function getStudentDetails(req, res, next) {
       pool.query(
         `
         SELECT
-          COUNT(*)::int AS submitted_count,
-          COUNT(*) FILTER (WHERE sub.status = 'submitted')::int AS approved_count,
-          COUNT(*) FILTER (WHERE sub.status = 'pending')::int AS pending_count,
-          COUNT(*) FILTER (WHERE sub.status = 'rejected')::int AS rejected_count
-        FROM assignment_submissions sub
-        WHERE sub.student_id = $1
+          a.id,
+          a.subject_id,
+          s.code AS subject_code,
+          s.name AS subject,
+          a.title,
+          a.description,
+          a.issue_date,
+          a.deadline,
+          sub.id AS submission_id,
+          sub.status AS submission_status,
+          sub.submitted_at AS submission_date,
+          sub.marks_obtained
+        FROM assignments a
+        JOIN subjects s ON s.id = a.subject_id
+        JOIN student_subjects ss
+          ON ss.subject_id = a.subject_id
+          AND ss.student_id = $1
+          AND ss.status = 'approved'
+        LEFT JOIN assignment_submissions sub
+          ON sub.assignment_id = a.id
+          AND sub.student_id = $1
+        ORDER BY s.name ASC, a.deadline ASC, a.issue_date DESC
         `,
         [studentId]
       ),
@@ -194,6 +210,28 @@ async function getStudentDetails(req, res, next) {
       ? Number(((totalPresent / totalClasses) * 100).toFixed(2))
       : 0;
 
+    const assignmentRows = assignmentsResult.rows;
+    const assignmentCounts = {
+      total_count: assignmentRows.length,
+      submitted_count: assignmentRows.filter((row) => row.submission_id).length,
+      approved_count: assignmentRows.filter((row) => row.submission_status === 'submitted').length,
+      pending_count: assignmentRows.filter((row) => row.submission_status === 'pending').length,
+      rejected_count: assignmentRows.filter((row) => row.submission_status === 'rejected').length,
+      not_submitted_count: assignmentRows.filter((row) => !row.submission_id).length,
+    };
+
+    const assignments = assignmentRows.map((row) => ({
+      ...row,
+      submission_status: row.submission_status || 'not_submitted',
+      display_status: row.submission_status === 'submitted'
+        ? 'Approved'
+        : row.submission_status === 'pending'
+          ? 'Pending'
+          : row.submission_status === 'rejected'
+            ? 'Rejected'
+            : 'Not Submitted',
+    }));
+
     res.json({
       student: studentResult.rows[0],
       attendance: {
@@ -201,12 +239,8 @@ async function getStudentDetails(req, res, next) {
         bySubject: attendance,
       },
       marks: marksResult.rows,
-      assignments: assignmentsResult.rows[0] || {
-        submitted_count: 0,
-        approved_count: 0,
-        pending_count: 0,
-        rejected_count: 0,
-      },
+      assignments: assignmentCounts,
+      assignmentDetails: assignments,
       achievements: achievementsResult.rows,
     });
   } catch (err) {
