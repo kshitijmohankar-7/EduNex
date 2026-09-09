@@ -1,18 +1,38 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 
 export default function FacultyMarksheets() {
   const [query, setQuery] = useState('');
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [marksheets, setMarksheets] = useState([]);
   const [file, setFile] = useState(null);
   const [sgpa, setSgpa] = useState('');
   const [cgpa, setCgpa] = useState('');
   const [resultStatus, setResultStatus] = useState('PASS');
   const [searching, setSearching] = useState(false);
+  const [loadingMarksheets, setLoadingMarksheets] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  async function loadMarksheets() {
+    try {
+      setLoadingMarksheets(true);
+      const data = await api.getFacultyMarksheets();
+      setMarksheets(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err.message || 'Unable to load uploaded marksheets.');
+      setMarksheets([]);
+    } finally {
+      setLoadingMarksheets(false);
+    }
+  }
+
+  useEffect(() => {
+    loadMarksheets();
+  }, []);
 
   async function handleSearch(event) {
     event.preventDefault();
@@ -61,6 +81,7 @@ export default function FacultyMarksheets() {
       setMessage(response.message || 'Marksheet uploaded and published successfully.');
       setFile(null);
       event.target.reset();
+      await loadMarksheets();
     } catch (err) {
       setError(err.message || 'Unable to upload marksheet.');
     } finally {
@@ -68,16 +89,37 @@ export default function FacultyMarksheets() {
     }
   }
 
+  async function handleDelete(marksheet) {
+    const studentLabel = marksheet.student_name || marksheet.student_code || 'this student';
+    const confirmed = window.confirm(
+      `Delete the published marksheet for ${studentLabel}?\n\nThis will also remove it from the student's Published Marksheets section.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingId(marksheet.id);
+      setError('');
+      setMessage('');
+      const response = await api.deleteMarksheet(marksheet.id);
+      setMarksheets((current) => current.filter((item) => item.id !== marksheet.id));
+      setMessage(response.message || 'Marksheet deleted successfully.');
+    } catch (err) {
+      setError(err.message || 'Unable to delete marksheet.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div>
       <div className="ledger-heading">
         <div>
-          <h2>Upload Marksheet</h2>
+          <h2>Marksheet Management</h2>
           <p style={{ margin: '6px 0 0', color: 'var(--muted-text)' }}>
-            Upload an official PDF marksheet and publish it to the selected student.
+            Upload, publish and manage official student marksheets.
           </p>
         </div>
-        <span className="count">Faculty</span>
+        <span className="count">{marksheets.length} published</span>
       </div>
 
       <hr className="ledger-rule" />
@@ -88,6 +130,7 @@ export default function FacultyMarksheets() {
       <div className="panel">
         <div className="ledger-heading">
           <h2>1. Search Student</h2>
+          <span className="count">Faculty</span>
         </div>
 
         <form onSubmit={handleSearch} style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -112,13 +155,10 @@ export default function FacultyMarksheets() {
                   type="button"
                   onClick={() => setSelectedStudent(student)}
                   style={{
-                    textAlign: 'left',
-                    padding: 14,
-                    borderRadius: 8,
+                    textAlign: 'left', padding: 14, borderRadius: 8,
                     border: selected ? '2px solid var(--accent)' : '1px solid var(--line)',
                     background: selected ? 'var(--panel)' : 'transparent',
-                    color: 'var(--text)',
-                    cursor: 'pointer',
+                    color: 'var(--text)', cursor: 'pointer',
                   }}
                 >
                   <strong>{student.student_name}</strong>
@@ -183,6 +223,62 @@ export default function FacultyMarksheets() {
           </form>
         </div>
       )}
+
+      <div className="panel">
+        <div className="ledger-heading">
+          <div>
+            <h2>Published Marksheets</h2>
+            <p style={{ margin: '6px 0 0', color: 'var(--muted-text)' }}>
+              Manage the marksheets currently visible to students.
+            </p>
+          </div>
+          <span className="count">{marksheets.length}</span>
+        </div>
+
+        {loadingMarksheets ? <p>Loading marksheets...</p> : marksheets.length === 0 ? (
+          <p>No uploaded marksheets found.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="ledger-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Student ID</th>
+                  <th>Semester</th>
+                  <th>SGPA</th>
+                  <th>CGPA</th>
+                  <th>Result</th>
+                  <th>File</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {marksheets.map((marksheet) => (
+                  <tr key={marksheet.id}>
+                    <td><strong>{marksheet.student_name || '-'}</strong></td>
+                    <td><span className="code-stamp">{marksheet.student_code || '-'}</span></td>
+                    <td>Semester {marksheet.semester_number || '-'}</td>
+                    <td>{marksheet.sgpa ?? '-'}</td>
+                    <td>{marksheet.cgpa ?? '-'}</td>
+                    <td><span className="pill pill-good">{marksheet.result_status || 'PUBLISHED'}</span></td>
+                    <td>{marksheet.file_name || 'PDF'}</td>
+                    <td>
+                      <button
+                        className="btn btn-outline"
+                        type="button"
+                        disabled={deletingId === marksheet.id}
+                        onClick={() => handleDelete(marksheet)}
+                      >
+                        {deletingId === marksheet.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

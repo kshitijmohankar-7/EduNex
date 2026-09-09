@@ -9,6 +9,8 @@ const authorize = require('../middleware/roleCheck');
 const {
   searchStudentsForMarksheet,
   uploadMarksheet,
+  getFacultyMarksheets,
+  deleteMarksheet,
   getStudentMarksheets,
 } = require('../controllers/marksheetController');
 
@@ -37,29 +39,10 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024 },
 });
 
-// Faculty: search a student before uploading a marksheet.
-router.get(
-  '/faculty/students/search',
-  authenticate,
-  authorize('faculty'),
-  searchStudentsForMarksheet
-);
-
-// Faculty: upload and publish a student's marksheet.
-router.post(
-  '/faculty/upload',
-  authenticate,
-  authorize('faculty'),
-  upload.single('marksheet'),
-  uploadMarksheet
-);
-
-// Student: get own published marksheets.
-router.get(
-  '/student',
-  authenticate,
-  authorize('student'),
-  getStudentMarksheets
-);
+router.get('/faculty/students/search', authenticate, authorize('faculty'), searchStudentsForMarksheet);
+router.get('/faculty', authenticate, authorize('faculty'), getFacultyMarksheets);
+router.post('/faculty/upload', authenticate, authorize('faculty'), upload.single('marksheet'), uploadMarksheet);
+router.delete('/faculty/:id', authenticate, authorize('faculty'), deleteMarksheet);
+router.get('/student', authenticate, authorize('student'), getStudentMarksheets);
 
 module.exports = router;
