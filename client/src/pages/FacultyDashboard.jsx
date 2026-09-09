@@ -4,49 +4,23 @@ import { api } from '../services/api';
 
 export default function FacultyDashboard() {
   const navigate = useNavigate();
-
-  // =====================================================
-  // STATE
-  // =====================================================
-
   const [subjects, setSubjects] = useState([]);
   const [students, setStudents] = useState([]);
   const [subjectChoices, setSubjectChoices] = useState([]);
-
   const [selectedSubject, setSelectedSubject] = useState('');
-
   const [loadingSubjects, setLoadingSubjects] = useState(true);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [loadingChoices, setLoadingChoices] = useState(true);
-
   const [processingChoice, setProcessingChoice] = useState(null);
-
   const [error, setError] = useState('');
-
-  // =====================================================
-  // LOAD SUBJECT CHOICES
-  // =====================================================
 
   async function loadSubjectChoices() {
     try {
       setLoadingChoices(true);
-
       const data = await api.getSubjectChoices();
-
-      setSubjectChoices(
-        Array.isArray(data) ? data : []
-      );
+      setSubjectChoices(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error(
-        'Failed to load subject choices:',
-        err
-      );
-
-      setError(
-        err.message ||
-        'Failed to load subject requests'
-      );
-
+      setError(err.message || 'Failed to load subject requests');
       setSubjectChoices([]);
     } finally {
       setLoadingChoices(false);
@@ -57,100 +31,21 @@ export default function FacultyDashboard() {
     loadSubjectChoices();
   }, []);
 
-  // =====================================================
-  // APPROVE SUBJECT CHOICE
-  // =====================================================
-
-  async function handleApprove(choiceId) {
-    try {
-      setProcessingChoice(choiceId);
-      setError('');
-
-      await api.approveSubjectChoice(choiceId);
-
-      // Reload pending requests
-      await loadSubjectChoices();
-
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err.message ||
-        'Failed to approve subject request'
-      );
-    } finally {
-      setProcessingChoice(null);
-    }
-  }
-
-  // =====================================================
-  // REJECT SUBJECT CHOICE
-  // =====================================================
-
-  async function handleReject(choiceId) {
-    try {
-      setProcessingChoice(choiceId);
-      setError('');
-
-      await api.rejectSubjectChoice(choiceId);
-
-      // Reload pending requests
-      await loadSubjectChoices();
-
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err.message ||
-        'Failed to reject subject request'
-      );
-    } finally {
-      setProcessingChoice(null);
-    }
-  }
-
-  // =====================================================
-  // LOAD SUBJECTS
-  // =====================================================
-
   useEffect(() => {
     async function loadSubjects() {
       try {
         setLoadingSubjects(true);
-        setError('');
-
         const data = await api.getSubjects();
-
-        setSubjects(
-          Array.isArray(data) ? data : []
-        );
-
-        if (
-          Array.isArray(data) &&
-          data.length > 0
-        ) {
-          setSelectedSubject(
-            String(data[0].id)
-          );
-        }
+        setSubjects(Array.isArray(data) ? data : []);
+        if (data?.length) setSelectedSubject(String(data[0].id));
       } catch (err) {
-        console.error(err);
-
-        setError(
-          err.message ||
-          'Failed to load subjects'
-        );
+        setError(err.message || 'Failed to load subjects');
       } finally {
         setLoadingSubjects(false);
       }
     }
-
     loadSubjects();
   }, []);
-
-  // =====================================================
-  // LOAD STUDENTS WHEN SUBJECT CHANGES
-  // =====================================================
 
   useEffect(() => {
     if (!selectedSubject) {
@@ -161,825 +56,217 @@ export default function FacultyDashboard() {
     async function loadStudents() {
       try {
         setLoadingStudents(true);
-        setError('');
-
-        const data =
-          await api.getFacultyStudents(
-            selectedSubject
-          );
-
-        setStudents(
-          Array.isArray(data) ? data : []
-        );
+        const data = await api.getFacultyStudents(selectedSubject);
+        setStudents(Array.isArray(data) ? data : []);
       } catch (err) {
-        console.error(err);
-
-        setError(
-          err.message ||
-          'Failed to load students'
-        );
-
+        setError(err.message || 'Failed to load students');
         setStudents([]);
       } finally {
         setLoadingStudents(false);
       }
     }
-
     loadStudents();
   }, [selectedSubject]);
 
-  // =====================================================
-  // SELECTED SUBJECT
-  // =====================================================
+  async function handleApprove(choiceId) {
+    try {
+      setProcessingChoice(choiceId);
+      setError('');
+      await api.approveSubjectChoice(choiceId);
+      await loadSubjectChoices();
+    } catch (err) {
+      setError(err.message || 'Failed to approve subject request');
+    } finally {
+      setProcessingChoice(null);
+    }
+  }
 
-  const currentSubject =
-    subjects.find(
-      (subject) =>
-        String(subject.id) ===
-        String(selectedSubject)
-    );
-
-  // =====================================================
-  // CALCULATIONS
-  // =====================================================
-
-  const studentsWithAttendance =
-    students.filter(
-      (student) =>
-        student.attendance !== undefined &&
-        student.attendance !== null
-    );
-
-  const averageAttendance =
-    studentsWithAttendance.length > 0
-      ? Math.round(
-          studentsWithAttendance.reduce(
-            (sum, student) =>
-              sum +
-              Number(
-                student.attendance || 0
-              ),
-            0
-          ) /
-            studentsWithAttendance.length
-        )
-      : 0;
-
-  const studentsWithCT2 =
-    students.filter(
-      (student) =>
-        student.ct2 !== undefined &&
-        student.ct2 !== null
-    );
-
-  const averageCT2 =
-    studentsWithCT2.length > 0
-      ? Math.round(
-          studentsWithCT2.reduce(
-            (sum, student) =>
-              sum +
-              Number(
-                student.ct2 || 0
-              ),
-            0
-          ) /
-            studentsWithCT2.length
-        )
-      : 0;
-
-  const atRisk =
-    students.filter(
-      (student) =>
-        student.trend === 'declining' ||
-        Number(
-          student.attendance || 0
-        ) < 75
-    );
-
-  // =====================================================
-  // LOADING SUBJECTS
-  // =====================================================
+  async function handleReject(choiceId) {
+    try {
+      setProcessingChoice(choiceId);
+      setError('');
+      await api.rejectSubjectChoice(choiceId);
+      await loadSubjectChoices();
+    } catch (err) {
+      setError(err.message || 'Failed to reject subject request');
+    } finally {
+      setProcessingChoice(null);
+    }
+  }
 
   if (loadingSubjects) {
     return (
       <div>
-        <div className="ledger-heading">
-          <h2>Class overview</h2>
-        </div>
-
+        <div className="ledger-heading"><h2>Faculty Dashboard</h2></div>
         <hr className="ledger-rule" />
-
-        <div className="panel">
-          <p>Loading subjects...</p>
-        </div>
+        <div className="panel"><p>Loading dashboard...</p></div>
       </div>
     );
   }
 
-  // =====================================================
-  // DASHBOARD
-  // =====================================================
+  const currentSubject = subjects.find((s) => String(s.id) === String(selectedSubject));
+  const withAttendance = students.filter((s) => s.attendance !== undefined && s.attendance !== null);
+  const averageAttendance = withAttendance.length
+    ? Math.round(withAttendance.reduce((sum, s) => sum + Number(s.attendance || 0), 0) / withAttendance.length)
+    : 0;
+  const withCT2 = students.filter((s) => s.ct2 !== undefined && s.ct2 !== null);
+  const averageCT2 = withCT2.length
+    ? Math.round(withCT2.reduce((sum, s) => sum + Number(s.ct2 || 0), 0) / withCT2.length)
+    : 0;
+  const atRisk = students.filter((s) => s.trend === 'declining' || Number(s.attendance || 0) < 75);
+
+  const actionButtonStyle = {
+    minHeight: 58,
+    fontSize: 15,
+    fontWeight: 700,
+  };
 
   return (
     <div>
-
-      {/* =================================================
-          HEADER
-      ================================================= */}
-
       <div className="ledger-heading">
-        <h2>Class overview</h2>
-
-        <span className="count">
-          {currentSubject
-            ? currentSubject.code || ''
-            : 'Select a subject'}
-        </span>
+        <div>
+          <h2>Faculty Dashboard</h2>
+          <p style={{ margin: '6px 0 0', color: 'var(--muted-text)' }}>
+            Manage attendance, marks, student requests and official marksheets.
+          </p>
+        </div>
+        <span className="count">{currentSubject?.code || 'Faculty'}</span>
       </div>
-
       <hr className="ledger-rule" />
 
-      {/* =================================================
-          SUBJECT SELECTOR
-      ================================================= */}
+      {error && <div className="panel"><div className="error-text">{error}</div></div>}
 
       <div className="panel">
-
         <div className="ledger-heading">
-          <h2>Select Subject</h2>
+          <div>
+            <h2>Marks Management</h2>
+            <p style={{ margin: '6px 0 0', color: 'var(--muted-text)' }}>
+              Enter subject-wise marks or upload an official published marksheet.
+            </p>
+          </div>
         </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+          <button className="btn" style={actionButtonStyle} onClick={() => navigate('/faculty/marks')}>
+            Enter Marks
+            <span style={{ display: 'block', fontSize: 12, fontWeight: 400, marginTop: 4, opacity: 0.75 }}>
+              Student-wise exam marks
+            </span>
+          </button>
+          <button className="btn btn-outline" style={actionButtonStyle} onClick={() => navigate('/faculty/marksheets')}>
+            Upload Marksheet
+            <span style={{ display: 'block', fontSize: 12, fontWeight: 400, marginTop: 4, opacity: 0.75 }}>
+              PDF marksheet → publish to student
+            </span>
+          </button>
+        </div>
+      </div>
 
+      <div className="panel">
+        <div className="ledger-heading"><h2>Quick Actions</h2></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+          <button className="btn btn-outline" onClick={() => navigate('/faculty/attendance')}>Mark Attendance</button>
+          <button className="btn btn-outline" onClick={() => navigate('/faculty/materials')}>Upload Study Material</button>
+          <button className="btn btn-outline" onClick={() => navigate('/faculty/assignments')}>Upload Assignment</button>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="ledger-heading">
+          <h2>Class Overview</h2>
+          <span className="count">{students.length} students</span>
+        </div>
         <select
           value={selectedSubject}
-          onChange={(e) =>
-            setSelectedSubject(
-              e.target.value
-            )
-          }
-          style={{
-            padding: '10px',
-            minWidth: '300px',
-            borderRadius: '4px',
-            border:
-              '1px solid var(--line)',
-            background:
-              'var(--panel)',
-            color: 'var(--text)',
-          }}
+          onChange={(e) => setSelectedSubject(e.target.value)}
+          style={{ padding: 10, minWidth: 320, maxWidth: '100%', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--panel)', color: 'var(--text)' }}
         >
-
-          <option value="">
-            Select a subject
-          </option>
-
+          <option value="">Select a subject</option>
           {subjects.map((subject) => (
-            <option
-              key={subject.id}
-              value={subject.id}
-            >
-              {subject.code
-                ? `${subject.code} — ${subject.name}`
-                : subject.name}
+            <option key={subject.id} value={subject.id}>
+              {subject.code ? `${subject.code} — ${subject.name}` : subject.name}
             </option>
           ))}
-
         </select>
-
       </div>
-
-      {/* =================================================
-          ERROR
-      ================================================= */}
-
-      {error && (
-        <div className="panel">
-          <div className="error-text">
-            {error}
-          </div>
-        </div>
-      )}
-
-      {/* =================================================
-          STAT CARDS
-      ================================================= */}
 
       <div className="card-grid">
-
-        <div className="stat-card">
-
-          <div className="stat-label">
-            Students
-          </div>
-
-          <div className="stat-value">
-            {students.length}
-          </div>
-
-        </div>
-
-        <div className="stat-card">
-
-          <div className="stat-label">
-            Avg. attendance
-          </div>
-
-          <div className="stat-value">
-            {averageAttendance}%
-          </div>
-
-        </div>
-
-        <div className="stat-card">
-
-          <div className="stat-label">
-            Avg. CT-2
-          </div>
-
-          <div className="stat-value">
-            {averageCT2}%
-          </div>
-
-        </div>
-
-        <div className="stat-card">
-
-          <div className="stat-label">
-            Flagged for support
-          </div>
-
-          <div className="stat-value">
-            {atRisk.length}
-          </div>
-
-        </div>
-
+        <div className="stat-card"><div className="stat-label">Students</div><div className="stat-value">{students.length}</div></div>
+        <div className="stat-card"><div className="stat-label">Avg. Attendance</div><div className="stat-value">{averageAttendance}%</div></div>
+        <div className="stat-card"><div className="stat-label">Avg. CT-2</div><div className="stat-value">{averageCT2}%</div></div>
+        <div className="stat-card"><div className="stat-label">Flagged for Support</div><div className="stat-value">{atRisk.length}</div></div>
       </div>
-
-      {/* =================================================
-          PENDING SUBJECT REQUESTS
-      ================================================= */}
 
       <div className="panel">
-
         <div className="ledger-heading">
-
-          <h2>
-            Pending Subject Requests
-          </h2>
-
-          <span className="count">
-            {subjectChoices.length} request
-            {subjectChoices.length !== 1
-              ? 's'
-              : ''}
-          </span>
-
+          <h2>Pending Subject Requests</h2>
+          <span className="count">{subjectChoices.length}</span>
         </div>
-
-        {loadingChoices ? (
-
-          <p>
-            Loading subject requests...
-          </p>
-
-        ) : subjectChoices.length === 0 ? (
-
-          <p>
-            No pending subject requests.
-          </p>
-
-        ) : (
-
-          <div
-            style={{
-              overflowX: 'auto',
-            }}
-          >
-
+        {loadingChoices ? <p>Loading subject requests...</p> : subjectChoices.length === 0 ? <p>No pending subject requests.</p> : (
+          <div style={{ overflowX: 'auto' }}>
             <table className="ledger-table">
-
-              <thead>
-
-                <tr>
-
-                  <th>
-                    Student
-                  </th>
-
-                  <th>
-                    ID
-                  </th>
-
-                  <th>
-                    Open Elective
-                  </th>
-
-                  <th>
-                    Liberal Learning
-                  </th>
-
-                  <th>
-                    Status
-                  </th>
-
-                  <th>
-                    Action
-                  </th>
-
-                </tr>
-
-              </thead>
-
+              <thead><tr><th>Student</th><th>ID</th><th>Open Elective</th><th>Liberal Learning</th><th>Status</th><th>Action</th></tr></thead>
               <tbody>
-
-                {subjectChoices.map(
-                  (choice) => {
-
-                    const isProcessing =
-                      processingChoice ===
-                      choice.id;
-
-                    return (
-                      <tr
-                        key={choice.id}
-                      >
-
-                        {/* STUDENT */}
-
-                        <td>
-                          <strong>
-                            {
-                              choice.student_name
-                            }
-                          </strong>
-                        </td>
-
-                        {/* STUDENT ID */}
-
-                        <td>
-
-                          <span className="code-stamp">
-                            {
-                              choice.student_code
-                            }
-                          </span>
-
-                        </td>
-
-                        {/* OPEN ELECTIVE */}
-
-                        <td>
-
-                          {
-                            choice.open_elective ||
-                            '-'
-                          }
-
-                          <br />
-
-                          <small>
-                            {
-                              choice.open_elective_code ||
-                              ''
-                            }
-                          </small>
-
-                        </td>
-
-                        {/* LLL */}
-
-                        <td>
-
-                          {
-                            choice.liberal_learning ||
-                            '-'
-                          }
-
-                          <br />
-
-                          <small>
-                            {
-                              choice.liberal_learning_code ||
-                              ''
-                            }
-                          </small>
-
-                        </td>
-
-                        {/* STATUS */}
-
-                        <td>
-
-                          <span className="pill pill-warn">
-                            {
-                              choice.status
-                            }
-                          </span>
-
-                        </td>
-
-                        {/* ACTIONS */}
-
-                        <td>
-
-                          <div
-                            style={{
-                              display:
-                                'flex',
-                              gap: '8px',
-                              flexWrap:
-                                'wrap',
-                            }}
-                          >
-
-                            <button
-                              className="btn"
-                              disabled={
-                                isProcessing
-                              }
-                              onClick={() =>
-                                handleApprove(
-                                  choice.id
-                                )
-                              }
-                            >
-                              {isProcessing
-                                ? 'Processing...'
-                                : 'Approve'}
-                            </button>
-
-                            <button
-                              className="btn btn-outline"
-                              disabled={
-                                isProcessing
-                              }
-                              onClick={() =>
-                                handleReject(
-                                  choice.id
-                                )
-                              }
-                            >
-                              {isProcessing
-                                ? 'Processing...'
-                                : 'Reject'}
-                            </button>
-
-                          </div>
-
-                        </td>
-
-                      </tr>
-                    );
-                  }
-                )}
-
+                {subjectChoices.map((choice) => {
+                  const busy = processingChoice === choice.id;
+                  return (
+                    <tr key={choice.id}>
+                      <td><strong>{choice.student_name}</strong></td>
+                      <td><span className="code-stamp">{choice.student_code}</span></td>
+                      <td>{choice.open_elective || '-'}<br /><small>{choice.open_elective_code || ''}</small></td>
+                      <td>{choice.liberal_learning || '-'}<br /><small>{choice.liberal_learning_code || ''}</small></td>
+                      <td><span className="pill pill-warn">{choice.status}</span></td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button className="btn" disabled={busy} onClick={() => handleApprove(choice.id)}>{busy ? 'Processing...' : 'Approve'}</button>
+                          <button className="btn btn-outline" disabled={busy} onClick={() => handleReject(choice.id)}>{busy ? 'Processing...' : 'Reject'}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
-
             </table>
-
           </div>
-
         )}
-
       </div>
 
-      {/* =================================================
-          LOADING STUDENTS
-      ================================================= */}
-
-      {loadingStudents && (
+      {atRisk.length > 0 && (
         <div className="panel">
-          <p>
-            Loading students...
-          </p>
+          <div className="ledger-heading"><h2>Suggested Faculty Review</h2></div>
+          {atRisk.map((student) => (
+            <div key={student.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--line)' }}>
+              <strong>{student.full_name || student.name || 'Unknown Student'}</strong> ({student.student_code}) — attendance {student.attendance ?? 'N/A'}%
+              <span className="pill pill-bad" style={{ marginLeft: 8 }}>Needs review</span>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* =================================================
-          AT RISK
-      ================================================= */}
-
-      {!loadingStudents &&
-        atRisk.length > 0 && (
-
-          <div className="panel">
-
-            <div className="ledger-heading">
-
-              <h2>
-                Suggested faculty review
-              </h2>
-
-            </div>
-
-            {atRisk.map(
-              (student) => (
-
-                <div
-                  key={student.id}
-                  style={{
-                    padding:
-                      '10px 0',
-                    borderBottom:
-                      '1px solid var(--line)',
-                  }}
-                >
-
-                  <strong>
-                    {
-                      student.full_name ||
-                      student.name ||
-                      'Unknown Student'
-                    }
-                  </strong>
-
-                  {' '}
-
-                  (
-                  {
-                    student.student_code
-                  }
-                  )
-
-                  {' — '}
-
-                  attendance{' '}
-
-                  {student.attendance !==
-                  undefined
-                    ? `${student.attendance}%`
-                    : 'N/A'}
-
-                  {student.ct2 !==
-                    undefined && (
-                    <>
-                      , CT-2{' '}
-                      {
-                        student.ct2
-                      }%
-                    </>
-                  )}
-
-                  <span
-                    className="pill pill-bad"
-                    style={{
-                      marginLeft: 8,
-                    }}
-                  >
-                    Needs review
-                  </span>
-
-                </div>
-
-              )
-            )}
-
-            <p
-              style={{
-                fontSize: 12,
-                color:
-                  'var(--muted-text)',
-                marginTop: 10,
-              }}
-            >
-              These are
-              system-generated
-              flags to support
-              faculty judgment —
-              not automated
-              decisions about any
-              student.
-            </p>
-
+      <div className="panel">
+        <div className="ledger-heading"><h2>Students</h2></div>
+        {loadingStudents ? <p>Loading students...</p> : students.length === 0 ? <p>No students found for this subject.</p> : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="ledger-table">
+              <thead><tr><th>Student</th><th>ID</th><th>Attendance</th><th>CT-2</th><th>Trend</th></tr></thead>
+              <tbody>
+                {students.map((student) => {
+                  const attendance = Number(student.attendance ?? 0);
+                  const trend = student.trend || (attendance < 75 ? 'declining' : 'stable');
+                  return (
+                    <tr key={student.id}>
+                      <td>{student.full_name || student.name || 'Unknown Student'}</td>
+                      <td><span className="code-stamp">{student.student_code}</span></td>
+                      <td>{attendance}%</td>
+                      <td>{student.ct2 ?? '-'}</td>
+                      <td><span className={`pill ${trend === 'improving' ? 'pill-good' : trend === 'declining' ? 'pill-bad' : 'pill-warn'}`}>{trend}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-
-      {/* =================================================
-          ALL STUDENTS
-      ================================================= */}
-
-      <div className="panel">
-
-        <div className="ledger-heading">
-
-          <h2>
-            All students
-          </h2>
-
-        </div>
-
-        {!selectedSubject ? (
-
-          <p>
-            Select a subject to view
-            students.
-          </p>
-
-        ) : loadingStudents ? (
-
-          <p>
-            Loading students...
-          </p>
-
-        ) : students.length === 0 ? (
-
-          <p>
-            No students found for this
-            subject.
-          </p>
-
-        ) : (
-
-          <table className="ledger-table">
-
-            <thead>
-
-              <tr>
-
-                <th>
-                  Student
-                </th>
-
-                <th>
-                  ID
-                </th>
-
-                <th>
-                  Attendance
-                </th>
-
-                <th>
-                  CT-2
-                </th>
-
-                <th>
-                  Trend
-                </th>
-
-              </tr>
-
-            </thead>
-
-            <tbody>
-
-              {students.map(
-                (student) => {
-
-                  const attendance =
-                    student.attendance ??
-                    0;
-
-                  const ct2 =
-                    student.ct2 ??
-                    '-';
-
-                  const trend =
-                    student.trend ||
-                    (Number(
-                      attendance
-                    ) < 75
-                      ? 'declining'
-                      : 'stable');
-
-                  return (
-
-                    <tr
-                      key={
-                        student.id
-                      }
-                    >
-
-                      <td>
-                        {
-                          student.full_name ||
-                          student.name ||
-                          'Unknown Student'
-                        }
-                      </td>
-
-                      <td>
-
-                        <span className="code-stamp">
-                          {
-                            student.student_code
-                          }
-                        </span>
-
-                      </td>
-
-                      <td>
-                        {attendance}%
-                      </td>
-
-                      <td>
-                        {ct2}
-                      </td>
-
-                      <td>
-
-                        <span
-                          className={
-                            `pill ${
-                              trend ===
-                              'improving'
-                                ? 'pill-good'
-                                : trend ===
-                                  'declining'
-                                ? 'pill-bad'
-                                : 'pill-warn'
-                            }`
-                          }
-                        >
-                          {trend}
-                        </span>
-
-                      </td>
-
-                    </tr>
-
-                  );
-
-                }
-              )}
-
-            </tbody>
-
-          </table>
-
-        )}
-
       </div>
-
-      {/* =================================================
-          QUICK ACTIONS
-      ================================================= */}
-
-      <div className="panel">
-
-        <div className="ledger-heading">
-
-          <h2>
-            Quick actions
-          </h2>
-
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            gap: 10,
-            flexWrap: 'wrap',
-          }}
-        >
-
-          <button
-            className="btn"
-            onClick={() =>
-              navigate(
-                '/faculty/attendance'
-              )
-            }
-          >
-            Mark attendance
-          </button>
-
-          <button
-            className="btn btn-outline"
-            onClick={() =>
-              navigate(
-                '/faculty/marks'
-              )
-            }
-          >
-            Enter CT marks
-          </button>
-
-          <button
-            className="btn btn-outline"
-            onClick={() =>
-              navigate(
-                '/faculty/materials'
-              )
-            }
-          >
-            Upload study material
-          </button>
-
-          <button
-            className="btn btn-outline"
-            onClick={() =>
-              navigate(
-                '/faculty/assignments'
-              )
-            }
-          >
-            Upload assignment
-          </button>
-
-        </div>
-
-      </div>
-
     </div>
   );
 }

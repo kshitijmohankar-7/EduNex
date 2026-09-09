@@ -2,17 +2,24 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const NAV_BY_ROLE = {
-student: [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/profile', label: 'Profile' },
-  { to: '/attendance', label: 'Attendance' },
-  { to: '/marksheet', label: 'Marksheet & Marks' },
-  { to: '/assignments', label: 'Assignments' },
-  { to: '/materials', label: 'Study Materials' },
-  { to: '/achievements', label: 'Achievements' },
-  { to: '/ai', label: 'AI Assistant' },
-],
-  faculty: [{ to: '/faculty', label: 'Class Overview' }],
+  student: [
+    { to: '/dashboard', label: 'Dashboard' },
+    { to: '/profile', label: 'Profile' },
+    { to: '/attendance', label: 'Attendance' },
+    { to: '/marksheet', label: 'Marksheet & Marks' },
+    { to: '/assignments', label: 'Assignments' },
+    { to: '/materials', label: 'Study Materials' },
+    { to: '/achievements', label: 'Achievements' },
+    { to: '/ai', label: 'AI Assistant' },
+  ],
+  faculty: [
+    { to: '/faculty', label: 'Class Overview' },
+    { to: '/faculty/marks', label: 'Enter Marks' },
+    { to: '/faculty/marksheets', label: 'Upload Marksheet' },
+    { to: '/faculty/attendance', label: 'Attendance' },
+    { to: '/faculty/materials', label: 'Study Materials' },
+    { to: '/faculty/assignments', label: 'Assignments' },
+  ],
   admin: [{ to: '/admin', label: 'College Overview' }],
 };
 
