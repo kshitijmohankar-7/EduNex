@@ -78,8 +78,6 @@ async function getStudentForMarks(req, res, next) {
   }
 }
 
-// Compulsory/enrolled subjects + the student's approved Open Elective and
-// Liberal Learning selection. Pending/unselected elective options are excluded.
 const ENROLLED_SUBJECTS_SQL = `
   SELECT DISTINCT id, name, code, credits, subject_category
   FROM (
@@ -299,7 +297,7 @@ async function saveBulkMarks(req, res, next) {
               obtained_marks = $2,
               grade = $3,
               entered_by = $4,
-              published = false
+              published = true
           WHERE id = $5
           RETURNING id, student_id, subject_id, exam_type, max_marks,
                     obtained_marks, grade, entered_by, published, created_at
@@ -313,7 +311,7 @@ async function saveBulkMarks(req, res, next) {
           INSERT INTO marks
             (student_id, subject_id, exam_type, max_marks, obtained_marks,
              grade, entered_by, published)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, false)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, true)
           RETURNING id, student_id, subject_id, exam_type, max_marks,
                     obtained_marks, grade, entered_by, published, created_at
           `,
@@ -326,7 +324,7 @@ async function saveBulkMarks(req, res, next) {
     await client.query('COMMIT');
 
     res.json({
-      message: 'Marks saved successfully',
+      message: 'Marks saved and published successfully',
       studentId,
       examType: normalizedExamType,
       savedCount: savedMarks.length,
