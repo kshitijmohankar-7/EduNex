@@ -115,6 +115,12 @@ export default function FacultyDashboard() {
     : 0;
   const atRisk = students.filter((s) => s.trend === 'declining' || Number(s.attendance || 0) < 75);
 
+  const actionButtonStyle = {
+    minHeight: 58,
+    fontSize: 15,
+    fontWeight: 700,
+  };
+
   return (
     <div>
       <div className="ledger-heading">
@@ -131,10 +137,33 @@ export default function FacultyDashboard() {
       {error && <div className="panel"><div className="error-text">{error}</div></div>}
 
       <div className="panel">
+        <div className="ledger-heading">
+          <div>
+            <h2>Marks Management</h2>
+            <p style={{ margin: '6px 0 0', color: 'var(--muted-text)' }}>
+              Enter subject-wise marks or upload an official published marksheet.
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+          <button className="btn" style={actionButtonStyle} onClick={() => navigate('/faculty/marks')}>
+            Enter Marks
+            <span style={{ display: 'block', fontSize: 12, fontWeight: 400, marginTop: 4, opacity: 0.75 }}>
+              Student-wise exam marks
+            </span>
+          </button>
+          <button className="btn btn-outline" style={actionButtonStyle} onClick={() => navigate('/faculty/marksheets')}>
+            Upload Marksheet
+            <span style={{ display: 'block', fontSize: 12, fontWeight: 400, marginTop: 4, opacity: 0.75 }}>
+              PDF marksheet → publish to student
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div className="panel">
         <div className="ledger-heading"><h2>Quick Actions</h2></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
-          <button className="btn" onClick={() => navigate('/faculty/marks')}>Enter Marks</button>
-          <button className="btn" onClick={() => navigate('/faculty/marksheets')}>Upload Marksheet</button>
           <button className="btn btn-outline" onClick={() => navigate('/faculty/attendance')}>Mark Attendance</button>
           <button className="btn btn-outline" onClick={() => navigate('/faculty/materials')}>Upload Study Material</button>
           <button className="btn btn-outline" onClick={() => navigate('/faculty/assignments')}>Upload Assignment</button>
