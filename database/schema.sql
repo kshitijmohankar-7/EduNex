@@ -48,11 +48,11 @@ CREATE TABLE divisions (
 );
 
 CREATE TABLE subjects (
-    id          SERIAL PRIMARY KEY,
-    semester_id INTEGER REFERENCES semesters(id) ON DELETE CASCADE,
-    name        VARCHAR(150) NOT NULL,
-    code        VARCHAR(20) NOT NULL,
-    credits     INTEGER DEFAULT 3
+    id              SERIAL PRIMARY KEY,
+    semester_id     INTEGER REFERENCES semesters(id) ON DELETE CASCADE,
+    name            VARCHAR(150) NOT NULL,
+    code            VARCHAR(20) NOT NULL,
+    credits         INTEGER DEFAULT 3
 );
 
 -- ---------- People ----------
@@ -69,9 +69,9 @@ CREATE TABLE students (
 
 CREATE TABLE faculty (
     id              SERIAL PRIMARY KEY,
-    user_id         INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-    faculty_code    VARCHAR(30) UNIQUE NOT NULL,
-    department_id   INTEGER REFERENCES departments(id)
+    user_id          INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    faculty_code     VARCHAR(30) UNIQUE NOT NULL,
+    department_id    INTEGER REFERENCES departments(id)
 );
 
 CREATE TABLE faculty_subject_assignments (
@@ -94,11 +94,13 @@ CREATE TABLE attendance (
 );
 
 -- ---------- Marks ----------
+-- Exam types used by the application.  Each subject stores its own
+-- maximum marks and obtained marks.
 CREATE TABLE marks (
     id              SERIAL PRIMARY KEY,
     student_id      INTEGER REFERENCES students(id) ON DELETE CASCADE,
     subject_id      INTEGER REFERENCES subjects(id) ON DELETE CASCADE,
-    exam_type       VARCHAR(20) CHECK (exam_type IN ('ct1','ct2','class_assessment','end_sem')) NOT NULL,
+    exam_type       VARCHAR(20) CHECK (exam_type IN ('CT1','CT2','INTERNAL','EXTERNAL','END SEMESTER')) NOT NULL,
     max_marks       NUMERIC(5,2) NOT NULL,
     obtained_marks  NUMERIC(5,2) NOT NULL,
     grade           VARCHAR(5),
