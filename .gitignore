@@ -1,0 +1,11 @@
+node_modules/
+.env
+dist/
+build/
+uploads/*
+!uploads/.gitkeep
+ai-service/chroma_store/
+ai-service/__pycache__/
+ai-service/venv/
+*.pyc
+.DS_Store

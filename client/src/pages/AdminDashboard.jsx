@@ -1,0 +1,30 @@
+export default function AdminDashboard() {
+  return (
+    <div>
+      <div className="ledger-heading"><h2>College overview</h2></div>
+      <hr className="ledger-rule" />
+
+      <div className="card-grid">
+        <div className="stat-card"><div className="stat-label">Departments</div><div className="stat-value">6</div></div>
+        <div className="stat-card"><div className="stat-label">Faculty</div><div className="stat-value">84</div></div>
+        <div className="stat-card"><div className="stat-label">Students</div><div className="stat-value">2,140</div></div>
+        <div className="stat-card"><div className="stat-label">Active courses</div><div className="stat-value">12</div></div>
+      </div>
+
+      <div className="panel">
+        <div className="ledger-heading"><h2>System management</h2></div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn">Manage departments</button>
+          <button className="btn btn-outline">Manage courses</button>
+          <button className="btn btn-outline">Manage faculty</button>
+          <button className="btn btn-outline">Manage students</button>
+          <button className="btn btn-outline">Post announcement</button>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--muted-text)', marginTop: 14 }}>
+          This is a starter admin panel — wire each action to the corresponding
+          <code> /api/admin/*</code> endpoints as they're built out.
+        </p>
+      </div>
+    </div>
+  );
+}
