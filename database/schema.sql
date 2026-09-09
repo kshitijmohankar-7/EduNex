@@ -94,8 +94,6 @@ CREATE TABLE attendance (
 );
 
 -- ---------- Marks ----------
--- Exam types used by the application.  Each subject stores its own
--- maximum marks and obtained marks.
 CREATE TABLE marks (
     id              SERIAL PRIMARY KEY,
     student_id      INTEGER REFERENCES students(id) ON DELETE CASCADE,
@@ -118,7 +116,12 @@ CREATE TABLE marksheets (
     sgpa            NUMERIC(4,2),
     cgpa            NUMERIC(4,2),
     result_status   VARCHAR(20),
+    file_path       VARCHAR(500),
+    file_name       VARCHAR(255),
+    file_type       VARCHAR(100),
+    uploaded_by     INTEGER REFERENCES faculty(id),
     published_at    TIMESTAMP,
+    created_at      TIMESTAMP DEFAULT NOW(),
     UNIQUE(student_id, semester_id)
 );
 
