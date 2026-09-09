@@ -1,4 +1,5 @@
 import FacultyMarks from './pages/FacultyMarks';
+import FacultyMarksheets from './pages/FacultyMarksheets';
 import FacultyAssignments from './pages/FacultyAssignments';
 import FacultyAssignmentSubmissions from './pages/FacultyAssignmentSubmissions';
 import FacultyMaterials from './pages/FacultyMaterials';
@@ -43,7 +44,7 @@ export default function App() {
       <Route element={<Protected roles={['student']}><AppShell /></Protected>}>
         <Route path="/dashboard" element={<StudentDashboard />} />
         <Route path="/attendance" element={<Attendance />} />
-        <Route path="/student/electives"element={<StudentElectives />}/>
+        <Route path="/student/electives" element={<StudentElectives />} />
         <Route path="/marksheet" element={<Marksheet />} />
         <Route path="/assignments" element={<Assignments />} />
         <Route path="/materials" element={<StudyMaterials />} />
@@ -55,10 +56,13 @@ export default function App() {
       <Route element={<Protected roles={['faculty']}><AppShell /></Protected>}>
         <Route path="/faculty" element={<FacultyDashboard />} />
         <Route path="/faculty/attendance" element={<FacultyAttendance />} />
-        <Route path="/faculty/assignments" element={<FacultyAssignments />} /></Route>
-        <Route path="/faculty/assignments/:assignmentId/submissions" element={<FacultyAssignmentSubmissions /> }/>
+        <Route path="/faculty/assignments" element={<FacultyAssignments />} />
+        <Route path="/faculty/assignments/:assignmentId/submissions" element={<FacultyAssignmentSubmissions />} />
         <Route path="/faculty/materials" element={<FacultyMaterials />} />
-        <Route path="/faculty/marks" element={<FacultyMarks />}/>
+        <Route path="/faculty/marks" element={<FacultyMarks />} />
+        <Route path="/faculty/marksheets" element={<FacultyMarksheets />} />
+      </Route>
+
       <Route element={<Protected roles={['admin']}><AppShell /></Protected>}>
         <Route path="/admin" element={<AdminDashboard />} />
       </Route>
