@@ -260,6 +260,7 @@ async function submitElectiveChoice(req, res, next) {
 }
 
 module.exports = {
+  getStudentByUserId,
   getProfile,
   getAttendance,
   getMarks,
