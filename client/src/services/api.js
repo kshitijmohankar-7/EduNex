@@ -1,6 +1,6 @@
-// Thin fetch wrapper around the EduNex REST API.
+// EduNex API client - clean module rewrite
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const BASE_URL = 'http://localhost:5000/api';
 const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, '');
 
 function getToken() {
@@ -16,9 +16,14 @@ async function request(path, options = {}) {
     ...options.headers,
   };
 
-  if (!isFormData) headers['Content-Type'] = 'application/json';
+  if (!isFormData) {
+    headers['Content-Type'] = 'application/json';
+  }
 
-  const response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const response = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers,
+  });
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -62,7 +67,6 @@ export const api = {
   approveAssignmentSubmission: (submissionId) => request(`/assignments/submissions/${submissionId}/approve`, { method: 'PUT' }),
   rejectAssignmentSubmission: (submissionId) => request(`/assignments/submissions/${submissionId}/reject`, { method: 'PUT' }),
 
-  // FACULTY MARKS
   searchStudentsForMarks: (search = '') => request(`/marks/students/search?search=${encodeURIComponent(search)}`),
   getStudentForMarks: (studentId) => request(`/marks/student/${studentId}`),
   getStudentSubjectsForMarks: (studentId) => request(`/marks/student/${studentId}/subjects`),
@@ -71,27 +75,25 @@ export const api = {
   publishMark: (markId) => request(`/marks/${markId}/publish`, { method: 'PUT' }),
   getStudentPublishedMarks: () => request('/marks/student'),
 
-  // FACULTY MARKSHEETS
   searchStudentsForMarksheet: (search = '') => request(`/marksheets/faculty/students/search?search=${encodeURIComponent(search)}`),
   getFacultyMarksheets: () => request('/marksheets/faculty'),
   uploadMarksheet: (formData) => request('/marksheets/faculty/upload', { method: 'POST', body: formData }),
   deleteMarksheet: (marksheetId) => request(`/marksheets/faculty/${marksheetId}`, { method: 'DELETE' }),
   getPublishedMarksheets: () => request('/marksheets/student'),
 
-  // ATTENDANCE
   getAttendanceStudents: (subjectId) => request(`/attendance/students?subjectId=${subjectId}`),
   markAttendance: (data) => request('/attendance', { method: 'POST', body: JSON.stringify(data) }),
   getStudentAttendance: () => request('/attendance/student'),
   getAttendanceSummary: () => request('/attendance/summary'),
 
-  // STUDY MATERIALS
   getMaterials: (subjectId) => request(`/materials${subjectId ? `?subjectId=${subjectId}` : ''}`),
   createMaterial: (formData) => request('/materials', { method: 'POST', body: formData }),
 
-  // AI
-  chat: (message) => request('/ai/chat', { method: 'POST', body: JSON.stringify({ message })),
+  chat: (message) => request('/ai/chat', {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  }),
 
-  // DASHBOARD
   getDashboard: async () => {
     const [profile, attendance, marks, assignments] = await Promise.all([
       request('/students/profile'),
