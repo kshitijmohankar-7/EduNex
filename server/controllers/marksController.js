@@ -1,18 +1,9 @@
 const pool = require('../config/db');
 
-const EXAM_TYPES = [
-  'CT1',
-  'CT2',
-  'INTERNAL',
-  'EXTERNAL',
-  'END SEMESTER',
-];
+const EXAM_TYPES = ['CT1', 'CT2', 'INTERNAL', 'EXTERNAL', 'END SEMESTER'];
 
 async function getFacultyByUserId(userId) {
-  const result = await pool.query(
-    `SELECT id FROM faculty WHERE user_id = $1`,
-    [userId]
-  );
+  const result = await pool.query(`SELECT id FROM faculty WHERE user_id = $1`, [userId]);
   return result.rows[0] || null;
 }
 
@@ -80,15 +71,42 @@ async function getStudentForMarks(req, res, next) {
       [req.params.studentId]
     );
 
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Student not found' });
-    }
-
+    if (!result.rows.length) return res.status(404).json({ error: 'Student not found' });
     res.json(result.rows[0]);
   } catch (err) {
     next(err);
   }
 }
+
+// Compulsory/enrolled subjects + the student's approved Open Elective and
+// Liberal Learning selection. Pending/unselected elective options are excluded.
+const ENROLLED_SUBJECTS_SQL = `
+  SELECT DISTINCT id, name, code, credits, subject_category
+  FROM (
+    SELECT sub.id, sub.name, sub.code, sub.credits, sub.subject_category
+    FROM student_subjects ss
+    JOIN subjects sub ON sub.id = ss.subject_id
+    WHERE ss.student_id = $1
+      AND (ss.status IS NULL OR LOWER(ss.status) = 'approved')
+
+    UNION
+
+    SELECT sub.id, sub.name, sub.code, sub.credits, sub.subject_category
+    FROM subject_choices sc
+    JOIN subjects sub ON sub.id = sc.open_elective_subject_id
+    WHERE sc.student_id = $1
+      AND LOWER(sc.status) = 'approved'
+
+    UNION
+
+    SELECT sub.id, sub.name, sub.code, sub.credits, sub.subject_category
+    FROM subject_choices sc
+    JOIN subjects sub ON sub.id = sc.lll_subject_id
+    WHERE sc.student_id = $1
+      AND LOWER(sc.status) = 'approved'
+  ) enrolled
+  ORDER BY code ASC
+`;
 
 async function getStudentSubjects(req, res, next) {
   try {
@@ -104,21 +122,9 @@ async function getStudentSubjects(req, res, next) {
       [studentId]
     );
 
-    if (!studentResult.rows.length) {
-      return res.status(404).json({ error: 'Student not found' });
-    }
+    if (!studentResult.rows.length) return res.status(404).json({ error: 'Student not found' });
 
-    const result = await pool.query(
-      `
-      SELECT sub.id, sub.name, sub.code, sub.credits, sub.subject_category
-      FROM student_subjects ss
-      JOIN subjects sub ON sub.id = ss.subject_id
-      WHERE ss.student_id = $1
-        AND (ss.status IS NULL OR ss.status = 'approved')
-      ORDER BY sub.code ASC
-      `,
-      [studentId]
-    );
+    const result = await pool.query(ENROLLED_SUBJECTS_SQL, [studentId]);
 
     const subjects = result.rows.map((subject) => {
       const externalOnly = isExternalOnly(subject);
@@ -156,21 +162,9 @@ async function getStudentMarksForExam(req, res, next) {
       [studentId]
     );
 
-    if (!studentResult.rows.length) {
-      return res.status(404).json({ error: 'Student not found' });
-    }
+    if (!studentResult.rows.length) return res.status(404).json({ error: 'Student not found' });
 
-    const subjectResult = await pool.query(
-      `
-      SELECT sub.id, sub.name, sub.code, sub.credits, sub.subject_category
-      FROM student_subjects ss
-      JOIN subjects sub ON sub.id = ss.subject_id
-      WHERE ss.student_id = $1
-        AND (ss.status IS NULL OR ss.status = 'approved')
-      ORDER BY sub.code ASC
-      `,
-      [studentId]
-    );
+    const subjectResult = await pool.query(ENROLLED_SUBJECTS_SQL, [studentId]);
 
     const marksResult = await pool.query(
       `
@@ -183,9 +177,7 @@ async function getStudentMarksForExam(req, res, next) {
       [studentId, examType]
     );
 
-    const markMap = new Map(
-      marksResult.rows.map((mark) => [Number(mark.subject_id), mark])
-    );
+    const markMap = new Map(marksResult.rows.map((mark) => [Number(mark.subject_id), mark]));
 
     const subjects = subjectResult.rows.map((subject) => {
       const externalOnly = isExternalOnly(subject);
@@ -228,48 +220,23 @@ async function saveBulkMarks(req, res, next) {
   try {
     const { studentId, examType, marks } = req.body;
 
-    if (!studentId) {
-      return res.status(400).json({ error: 'studentId is required' });
-    }
+    if (!studentId) return res.status(400).json({ error: 'studentId is required' });
 
     const normalizedExamType = String(examType || '').trim().toUpperCase();
     if (!EXAM_TYPES.includes(normalizedExamType)) {
       return res.status(400).json({ error: 'Invalid exam type' });
     }
 
-    if (!Array.isArray(marks)) {
-      return res.status(400).json({ error: 'marks must be an array' });
-    }
+    if (!Array.isArray(marks)) return res.status(400).json({ error: 'marks must be an array' });
 
     const faculty = await getFacultyByUserId(req.user.id);
-    if (!faculty) {
-      return res.status(404).json({ error: 'Faculty profile not found' });
-    }
+    if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
 
-    const student = await pool.query(
-      `SELECT id FROM students WHERE id = $1`,
-      [studentId]
-    );
+    const student = await pool.query(`SELECT id FROM students WHERE id = $1`, [studentId]);
+    if (!student.rows.length) return res.status(404).json({ error: 'Student not found' });
 
-    if (!student.rows.length) {
-      return res.status(404).json({ error: 'Student not found' });
-    }
-
-    const enrolledResult = await pool.query(
-      `
-      SELECT sub.id, sub.name, sub.code, sub.subject_category
-      FROM student_subjects ss
-      JOIN subjects sub ON sub.id = ss.subject_id
-      WHERE ss.student_id = $1
-        AND (ss.status IS NULL OR ss.status = 'approved')
-      `,
-      [studentId]
-    );
-
-    const enrolledMap = new Map(
-      enrolledResult.rows.map((subject) => [Number(subject.id), subject])
-    );
-
+    const enrolledResult = await pool.query(ENROLLED_SUBJECTS_SQL, [studentId]);
+    const enrolledMap = new Map(enrolledResult.rows.map((subject) => [Number(subject.id), subject]));
     const preparedMarks = [];
 
     for (const item of marks) {
@@ -279,48 +246,28 @@ async function saveBulkMarks(req, res, next) {
       const subject = enrolledMap.get(subjectId);
 
       if (!subject) {
-        return res.status(400).json({
-          error: `Subject ${subjectId} is not enrolled by this student`,
-        });
+        return res.status(400).json({ error: `Subject ${subjectId} is not enrolled by this student` });
       }
 
       if (isExternalOnly(subject) && normalizedExamType !== 'EXTERNAL') {
-        return res.status(400).json({
-          error: `${subject.name} can only have EXTERNAL marks`,
-        });
+        return res.status(400).json({ error: `${subject.name} can only have EXTERNAL marks` });
       }
 
-      if (
-        item.obtainedMarks === undefined ||
-        item.obtainedMarks === null ||
-        item.obtainedMarks === ''
-      ) {
-        continue;
-      }
+      if (item.obtainedMarks === undefined || item.obtainedMarks === null || item.obtainedMarks === '') continue;
 
-      if (
-        item.maxMarks === undefined ||
-        item.maxMarks === null ||
-        item.maxMarks === ''
-      ) {
-        return res.status(400).json({
-          error: `Maximum marks are required for ${subject.name}`,
-        });
+      if (item.maxMarks === undefined || item.maxMarks === null || item.maxMarks === '') {
+        return res.status(400).json({ error: `Maximum marks are required for ${subject.name}` });
       }
 
       const max = Number(item.maxMarks);
       const obtained = Number(item.obtainedMarks);
 
       if (!Number.isFinite(max) || max <= 0) {
-        return res.status(400).json({
-          error: `Maximum marks for ${subject.name} must be greater than 0`,
-        });
+        return res.status(400).json({ error: `Maximum marks for ${subject.name} must be greater than 0` });
       }
 
       if (!Number.isFinite(obtained) || obtained < 0 || obtained > max) {
-        return res.status(400).json({
-          error: `Marks for ${subject.name} must be between 0 and ${max}`,
-        });
+        return res.status(400).json({ error: `Marks for ${subject.name} must be between 0 and ${max}` });
       }
 
       preparedMarks.push({
@@ -332,9 +279,7 @@ async function saveBulkMarks(req, res, next) {
     }
 
     if (!preparedMarks.length) {
-      return res.status(400).json({
-        error: 'Enter at least one mark before saving',
-      });
+      return res.status(400).json({ error: 'Enter at least one mark before saving' });
     }
 
     await client.query('BEGIN');
@@ -342,11 +287,7 @@ async function saveBulkMarks(req, res, next) {
 
     for (const item of preparedMarks) {
       const existing = await client.query(
-        `
-        SELECT id
-        FROM marks
-        WHERE student_id = $1 AND subject_id = $2 AND exam_type = $3
-        `,
+        `SELECT id FROM marks WHERE student_id = $1 AND subject_id = $2 AND exam_type = $3`,
         [studentId, item.subjectId, normalizedExamType]
       );
 
@@ -376,15 +317,7 @@ async function saveBulkMarks(req, res, next) {
           RETURNING id, student_id, subject_id, exam_type, max_marks,
                     obtained_marks, grade, entered_by, published, created_at
           `,
-          [
-            studentId,
-            item.subjectId,
-            normalizedExamType,
-            item.max,
-            item.obtained,
-            item.grade,
-            faculty.id,
-          ]
+          [studentId, item.subjectId, normalizedExamType, item.max, item.obtained, item.grade, faculty.id]
         );
         savedMarks.push(inserted.rows[0]);
       }
@@ -410,9 +343,7 @@ async function saveBulkMarks(req, res, next) {
 async function publishMarks(req, res, next) {
   try {
     const faculty = await getFacultyByUserId(req.user.id);
-    if (!faculty) {
-      return res.status(404).json({ error: 'Faculty profile not found' });
-    }
+    if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
 
     const result = await pool.query(
       `
@@ -425,15 +356,10 @@ async function publishMarks(req, res, next) {
     );
 
     if (!result.rows.length) {
-      return res.status(404).json({
-        error: 'Mark not found or you are not authorized to publish it',
-      });
+      return res.status(404).json({ error: 'Mark not found or you are not authorized to publish it' });
     }
 
-    res.json({
-      message: 'Mark published successfully',
-      mark: result.rows[0],
-    });
+    res.json({ message: 'Mark published successfully', mark: result.rows[0] });
   } catch (err) {
     next(err);
   }
@@ -441,14 +367,8 @@ async function publishMarks(req, res, next) {
 
 async function getStudentMarks(req, res, next) {
   try {
-    const studentResult = await pool.query(
-      `SELECT id FROM students WHERE user_id = $1`,
-      [req.user.id]
-    );
-
-    if (!studentResult.rows.length) {
-      return res.status(404).json({ error: 'Student profile not found' });
-    }
+    const studentResult = await pool.query(`SELECT id FROM students WHERE user_id = $1`, [req.user.id]);
+    if (!studentResult.rows.length) return res.status(404).json({ error: 'Student profile not found' });
 
     const result = await pool.query(
       `
