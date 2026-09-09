@@ -13,7 +13,7 @@ const NAV_BY_ROLE = {
     { to: '/ai', label: 'AI Assistant' },
   ],
   faculty: [
-    { to: '/faculty', label: 'Class Overview' },
+    { to: '/faculty', label: 'Student Details' },
     { to: '/faculty/marks', label: 'Enter Marks' },
     { to: '/faculty/marksheets', label: 'Upload Marksheet' },
     { to: '/faculty/attendance', label: 'Attendance' },
