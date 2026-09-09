@@ -80,9 +80,16 @@ export const api = {
     body: JSON.stringify(data),
   }),
   publishMark: (markId) => request(`/marks/${markId}/publish`, { method: 'PUT' }),
-
-  // STUDENT PUBLISHED MARKS
   getStudentPublishedMarks: () => request('/marks/student'),
+
+  // FACULTY MARKSHEETS
+  searchStudentsForMarksheet: (search = '') =>
+    request(`/marksheets/faculty/students/search?search=${encodeURIComponent(search)}`),
+  uploadMarksheet: (formData) => request('/marksheets/faculty/upload', {
+    method: 'POST',
+    body: formData,
+  }),
+  getPublishedMarksheets: () => request('/marksheets/student'),
 
   // ATTENDANCE
   getAttendanceStudents: (subjectId) => request(`/attendance/students?subjectId=${subjectId}`),
