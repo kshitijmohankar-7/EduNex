@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api';
 
 export default function Achievements() {
@@ -12,6 +12,7 @@ export default function Achievements() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const certificateInputRef = useRef(null);
 
   async function loadAchievements() {
     try {
@@ -59,7 +60,9 @@ export default function Achievements() {
       setDescription('');
       setAchievedOn('');
       setCertificate(null);
-      document.getElementById('achievement-certificate')?.value = '';
+      if (certificateInputRef.current) {
+        certificateInputRef.current.value = '';
+      }
       setSuccess('Certificate uploaded successfully.');
       await loadAchievements();
     } catch (err) {
@@ -108,6 +111,7 @@ export default function Achievements() {
             <div className="field">
               <label>Certificate File *</label>
               <input
+                ref={certificateInputRef}
                 id="achievement-certificate"
                 type="file"
                 accept=".pdf,.jpg,.jpeg,.png,.webp"
