@@ -16,204 +16,40 @@ const assignmentRoutes = require('./routes/assignmentRoutes');
 const subjectRoutes = require('./routes/subjectRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const marksRoutes = require('./routes/marksRoutes');
+const marksheetRoutes = require('./routes/marksheetRoutes');
 
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
-
-// ======================================================
-// CORS
-// ======================================================
-
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || '*',
-  })
-);
-
-
-// ======================================================
-// BODY PARSING
-// ======================================================
-
+app.use(cors({ origin: process.env.CLIENT_URL || '*' }));
 app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
-app.use(
-  express.urlencoded({
-    limit: '100mb',
-    extended: true,
-  })
-);
-
-
-// ======================================================
-// STATIC UPLOAD FILES
-// ======================================================
-
-// Files inside:
-// edunex/uploads/
-//
-// are available through:
-// http://localhost:5000/uploads/...
-
-app.use(
-  '/uploads',
-  express.static(
-    path.join(__dirname, '..', 'uploads')
-  )
-);
-
-
-// ======================================================
-// HEALTH CHECK
-// ======================================================
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-  });
+  res.json({ status: 'ok' });
 });
 
-
-// ======================================================
-// AUTHENTICATION
-// ======================================================
-
-app.use(
-  '/api/auth',
-  authRoutes
-);
-
-
-// ======================================================
-// STUDENT
-// ======================================================
-
-app.use(
-  '/api/students',
-  studentRoutes
-);
-
-
-// ======================================================
-// STUDENT ATTENDANCE
-// ======================================================
-
-app.use(
-  '/api/attendance',
-  attendanceRoutes
-);
-
-
-// ======================================================
-// STUDENT ACHIEVEMENTS
-// ======================================================
-
-app.use(
-  '/api/students/achievements',
-  achievementRoutes
-);
-
-
-// ======================================================
-// FACULTY
-// ======================================================
-
-app.use(
-  '/api/faculty',
-  facultyRoutes
-);
-
-
-// ======================================================
-// ASSIGNMENT SUBMISSIONS
-// ======================================================
-
-app.use(
-  '/api/assignment-submissions',
-  assignmentSubmissionRoutes
-);
-
-
-// ======================================================
-// MARKS
-// ======================================================
-
-// Faculty:
-// GET  /api/marks/students?subjectId=1
-// POST /api/marks
-//
-// This route is registered ONLY ONCE.
-
-app.use(
-  '/api/marks',
-  marksRoutes
-);
-
-
-// ======================================================
-// AI
-// ======================================================
-
-app.use(
-  '/api/ai',
-  aiRoutes
-);
-
-
-// ======================================================
-// SUBJECTS
-// ======================================================
-
-app.use(
-  '/api/subjects',
-  subjectRoutes
-);
-
-
-// ======================================================
-// STUDY MATERIALS
-// ======================================================
-
-app.use(
-  '/api/materials',
-  materialRoutes
-);
-
-
-// ======================================================
-// ASSIGNMENTS
-// ======================================================
-
-// Student:
-// GET /api/assignments
-//
-// Faculty:
-// POST /api/assignments
-
-app.use(
-  '/api/assignments',
-  assignmentRoutes
-);
-
-
-// ======================================================
-// ERROR HANDLER
-// ======================================================
+app.use('/api/auth', authRoutes);
+app.use('/api/students', studentRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/students/achievements', achievementRoutes);
+app.use('/api/faculty', facultyRoutes);
+app.use('/api/assignment-submissions', assignmentSubmissionRoutes);
+app.use('/api/marks', marksRoutes);
+app.use('/api/marksheets', marksheetRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/subjects', subjectRoutes);
+app.use('/api/materials', materialRoutes);
+app.use('/api/assignments', assignmentRoutes);
 
 app.use(errorHandler);
 
-
-// ======================================================
-// START SERVER
-// ======================================================
-
 const PORT = process.env.PORT || 5000;
-
 app.listen(PORT, () => {
   console.log(`EduNex API listening on port ${PORT}`);
 });
-
 
 module.exports = app;
