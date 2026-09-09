@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { api } from '../services/api';
 
-const EXAM_ORDER = ['CT1', 'CT2', 'INTERNAL', 'EXTERNAL', 'END SEMESTER'];
-
 export default function FacultyStudentDetails() {
   const [search, setSearch] = useState('');
   const [results, setResults] = useState([]);
@@ -55,10 +53,17 @@ export default function FacultyStudentDetails() {
     return new Date(value).toLocaleDateString();
   }
 
+  function formatDeadline(value) {
+    if (!value) return '-';
+    return new Date(value).toLocaleString();
+  }
+
   const submittedCount = Number(details?.assignments?.submitted_count || 0);
   const approvedCount = Number(details?.assignments?.approved_count || 0);
   const pendingCount = Number(details?.assignments?.pending_count || 0);
   const rejectedCount = Number(details?.assignments?.rejected_count || 0);
+  const notSubmittedCount = Number(details?.assignments?.not_submitted_count || 0);
+  const totalAssignmentCount = Number(details?.assignments?.total_count || 0);
 
   return (
     <div>
@@ -141,11 +146,11 @@ export default function FacultyStudentDetails() {
             </div>
             <div className="stat-card">
               <div className="stat-label">Assignments Submitted</div>
-              <div className="stat-value">{submittedCount}</div>
+              <div className="stat-value">{submittedCount} / {totalAssignmentCount}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Approved Assignments</div>
-              <div className="stat-value">{approvedCount}</div>
+              <div className="stat-label">Not Submitted</div>
+              <div className="stat-value">{notSubmittedCount}</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Certificates</div>
@@ -199,13 +204,71 @@ export default function FacultyStudentDetails() {
           </div>
 
           <div className="panel">
-            <div className="ledger-heading"><h2>Assignment Submissions</h2></div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div className="ledger-heading">
+              <div>
+                <h2>Assignment Submissions</h2>
+                <p style={{ margin: '5px 0 0', color: 'var(--muted-text)', fontSize: 13 }}>
+                  Every assignment for the student's approved subjects is shown below, including assignments that have not been submitted.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+              <span className="pill">Total assignments: {totalAssignmentCount}</span>
               <span className="pill pill-good">Approved: {approvedCount}</span>
               <span className="pill pill-warn">Pending: {pendingCount}</span>
               <span className="pill pill-bad">Rejected: {rejectedCount}</span>
-              <span className="pill">Total submitted: {submittedCount}</span>
+              <span className="pill">Not Submitted: {notSubmittedCount}</span>
             </div>
+
+            {!details.assignmentDetails?.length ? <p>No assignments found for this student's approved subjects.</p> : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="ledger-table">
+                  <thead>
+                    <tr>
+                      <th>Subject</th>
+                      <th>Assignment</th>
+                      <th>Issue Date</th>
+                      <th>Deadline</th>
+                      <th>Status</th>
+                      <th>Submitted On</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {details.assignmentDetails.map((assignment) => {
+                      const statusClass = assignment.submission_status === 'submitted'
+                        ? 'pill-good'
+                        : assignment.submission_status === 'pending'
+                          ? 'pill-warn'
+                          : assignment.submission_status === 'rejected'
+                            ? 'pill-bad'
+                            : '';
+
+                      return (
+                        <tr key={assignment.id}>
+                          <td>
+                            <strong>{assignment.subject}</strong><br />
+                            <small>{assignment.subject_code}</small>
+                          </td>
+                          <td>
+                            <strong>{assignment.title}</strong>
+                            {assignment.description && (
+                              <div style={{ fontSize: 12, color: 'var(--muted-text)', marginTop: 4 }}>
+                                {assignment.description}
+                              </div>
+                            )}
+                          </td>
+                          <td>{formatDate(assignment.issue_date)}</td>
+                          <td>{formatDeadline(assignment.deadline)}</td>
+                          <td><span className={`pill ${statusClass}`}>{assignment.display_status}</span></td>
+                          <td>{assignment.submission_date ? formatDeadline(assignment.submission_date) : '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="panel">
