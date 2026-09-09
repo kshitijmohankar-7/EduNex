@@ -1,6 +1,7 @@
 // Thin fetch wrapper around the EduNex REST API.
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, '');
 
 function getToken() {
   return localStorage.getItem('edunex_token');
@@ -38,12 +39,15 @@ export const api = {
   getSubjectChoices: () => request('/faculty/subject-choices'),
   approveSubjectChoice: (choiceId) => request(`/faculty/subject-choices/${choiceId}/approve`, { method: 'POST' }),
   rejectSubjectChoice: (choiceId) => request(`/faculty/subject-choices/${choiceId}/reject`, { method: 'POST' }),
+  searchFacultyStudents: (search = '') => request(`/faculty/student-details/search?search=${encodeURIComponent(search)}`),
+  getFacultyStudentDetails: (studentId) => request(`/faculty/student-details/${studentId}`),
 
   getProfile: () => request('/students/profile'),
   getAttendance: () => request('/students/attendance'),
   getMarks: () => request('/students/marks'),
   getMarksheet: () => request('/students/marksheet'),
   getAchievements: () => request('/students/achievements'),
+  addAchievement: (formData) => request('/students/achievements', { method: 'POST', body: formData }),
   getElectiveOptions: () => request('/students/electives'),
   getElectiveChoice: () => request('/students/electives/choice'),
   submitElectiveChoice: (data) => request('/students/electives', { method: 'POST', body: JSON.stringify(data) }),
@@ -85,7 +89,7 @@ export const api = {
   createMaterial: (formData) => request('/materials', { method: 'POST', body: formData }),
 
   // AI
-  chat: (message) => request('/ai/chat', { method: 'POST', body: JSON.stringify({ message }) }),
+  chat: (message) => request('/ai/chat', { method: 'POST', body: JSON.stringify({ message })),
 
   // DASHBOARD
   getDashboard: async () => {
@@ -96,6 +100,12 @@ export const api = {
       request('/assignments'),
     ]);
     return { profile, attendance, marks, assignments };
+  },
+
+  getFileUrl: (filePath) => {
+    if (!filePath) return '#';
+    if (/^https?:\/\//i.test(filePath)) return filePath;
+    return `${API_ORIGIN}${filePath.startsWith('/') ? filePath : `/${filePath}`}`;
   },
 };
 

@@ -15,74 +15,46 @@ const {
   rejectSubjectChoice,
 } = require('../controllers/facultyController');
 
+const {
+  searchStudents,
+  getStudentDetails,
+} = require('../controllers/facultyStudentController');
 
 // ======================================================
 // FACULTY AUTHENTICATION
 // ======================================================
-
 router.use(
   authenticate,
   authorize('faculty', 'admin')
 );
 
+// ======================================================
+// STUDENT DETAILS
+// ======================================================
+router.get('/student-details/search', searchStudents);
+router.get('/student-details/:studentId', getStudentDetails);
 
 // ======================================================
 // STUDENTS
 // ======================================================
-
-router.get(
-  '/students',
-  getAssignedStudents
-);
-
+router.get('/students', getAssignedStudents);
 
 // ======================================================
 // ATTENDANCE
 // ======================================================
-
-router.post(
-  '/attendance',
-  markAttendance
-);
-
+router.post('/attendance', markAttendance);
 
 // ======================================================
 // MARKS
 // ======================================================
-
-router.post(
-  '/marks',
-  enterMarks
-);
-
-router.post(
-  '/marks/publish',
-  publishMarks
-);
-
+router.post('/marks', enterMarks);
+router.post('/marks/publish', publishMarks);
 
 // ======================================================
 // SUBJECT CHOICE REQUESTS
 // ======================================================
-
-router.get(
-  '/subject-choices',
-  getSubjectChoices
-);
-
-router.post(
-  '/subject-choices/:choiceId/approve',
-  approveSubjectChoice
-);
-
-router.post(
-  '/subject-choices/:choiceId/reject',
-  rejectSubjectChoice
-);
-
-
-// ======================================================
-// EXPORT
-// ======================================================
+router.get('/subject-choices', getSubjectChoices);
+router.post('/subject-choices/:choiceId/approve', approveSubjectChoice);
+router.post('/subject-choices/:choiceId/reject', rejectSubjectChoice);
 
 module.exports = router;
