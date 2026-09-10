@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import Announcements from '../components/Announcements';
 
 function calculateAverage(marks, examType) {
   const filtered = marks.filter(
@@ -112,12 +113,6 @@ export default function StudentDashboard() {
     (a) => getAssignmentStatus(a) === 'submitted'
   );
 
-  /*
-   * Performance data for the graph.
-   *
-   * At this stage we have CT-1 and CT-2 marks from PostgreSQL,
-   * so the graph shows the two real test averages.
-   */
   const performanceData = [
     {
       test: 'CT-1',
@@ -134,7 +129,6 @@ export default function StudentDashboard() {
 
   return (
     <div>
-      {/* HEADER */}
       <div className="ledger-heading">
         <div>
           <h2>
@@ -151,100 +145,68 @@ export default function StudentDashboard() {
 
       <hr className="ledger-rule" />
 
-      {/* STAT CARDS */}
       <div className="card-grid">
-
         <div className="stat-card">
-          <div className="stat-label">
-            Attendance
-          </div>
-
+          <div className="stat-label">Attendance</div>
           <div className="stat-value">
             {attendance.overallPercentage || 0}%
           </div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-label">
-            CT-1 Average
-          </div>
-
+          <div className="stat-label">CT-1 Average</div>
           <div className="stat-value">
             {ct1Average}%
           </div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-label">
-            CT-2 Average
-          </div>
-
+          <div className="stat-label">CT-2 Average</div>
           <div className="stat-value">
             {ct2Average}%
           </div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-label">
-            Assignments
-          </div>
-
+          <div className="stat-label">Assignments</div>
           <div className="stat-value">
             {submittedAssignments.length}/{assignments.length}
           </div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-label">
-            Pending
-          </div>
-
+          <div className="stat-label">Pending</div>
           <div className="stat-value">
             {pendingAssignments.length}
           </div>
         </div>
-
       </div>
 
-      {/* PERFORMANCE */}
+      <Announcements compact />
+
       <div className="panel">
-
         <div className="ledger-heading">
-          <h2>
-            Recent test performance
-          </h2>
-
-          <span className="count">
-            CT-1 / CT-2
-          </span>
+          <h2>Recent test performance</h2>
+          <span className="count">CT-1 / CT-2</span>
         </div>
 
-        <ResponsiveContainer
-          width="100%"
-          height={240}
-        >
-          <LineChart
-            data={performanceData}
-          >
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={performanceData}>
             <CartesianGrid
               stroke="rgba(28,27,24,0.08)"
               vertical={false}
             />
-
             <XAxis
               dataKey="test"
               tick={{ fontSize: 12 }}
               stroke="#6B6558"
             />
-
             <YAxis
               domain={[0, 100]}
               tick={{ fontSize: 12 }}
               stroke="#6B6558"
             />
-
             <Tooltip />
-
             <Line
               type="monotone"
               dataKey="percentage"
@@ -254,40 +216,34 @@ export default function StudentDashboard() {
             />
           </LineChart>
         </ResponsiveContainer>
-
       </div>
+
       <div className="panel">
-  <div className="ledger-heading">
-    <h2>Subject Selection</h2>
-  </div>
-
-  <p style={{ color: 'var(--muted-text)' }}>
-    Choose your Open Elective and Liberal Learning Module.
-  </p>
-
-  <button
-    className="btn"
-    onClick={() => navigate('/student/electives')}
-  >
-    Choose Elective Subjects
-  </button>
-</div>
-
-      {/* ATTENDANCE */}
-      <div className="panel">
-
         <div className="ledger-heading">
-          <h2>
-            Attendance overview
-          </h2>
+          <h2>Subject Selection</h2>
+        </div>
 
+        <p style={{ color: 'var(--muted-text)' }}>
+          Choose your Open Elective and Liberal Learning Module.
+        </p>
+
+        <button
+          className="btn"
+          onClick={() => navigate('/student/electives')}
+        >
+          Choose Elective Subjects
+        </button>
+      </div>
+
+      <div className="panel">
+        <div className="ledger-heading">
+          <h2>Attendance overview</h2>
           <span className="count">
             Overall: {attendance.overallPercentage || 0}%
           </span>
         </div>
 
         <table className="ledger-table">
-
           <thead>
             <tr>
               <th>Subject</th>
@@ -298,47 +254,32 @@ export default function StudentDashboard() {
           </thead>
 
           <tbody>
-
-            {(attendance.bySubject || []).map(
-              (subject) => (
-                <tr key={subject.code}>
-
-                  <td>
-                    {subject.subject}
-                  </td>
-
-                  <td>
-                    <span className="code-stamp">
-                      {subject.code}
-                    </span>
-                  </td>
-
-                  <td>
-                    {subject.presentCount}/
-                    {subject.totalCount} (
-                    {subject.percentage}%)
-                  </td>
-
-                  <td>
-                    <span
-                      className={`pill ${
-                        subject.percentage >= 75
-                          ? 'pill-good'
-                          : 'pill-bad'
-                      }`}
-                    >
-                      {subject.percentage >= 75
-                        ? 'On track'
-                        : 'Below 75%'}
-                    </span>
-                  </td>
-
-                </tr>
-              )
-            )}
-
+            {(attendance.bySubject || []).map((subject) => (
+              <tr key={subject.code}>
+                <td>{subject.subject}</td>
+                <td>
+                  <span className="code-stamp">{subject.code}</span>
+                </td>
+                <td>
+                  {subject.presentCount}/{subject.totalCount} (
+                  {subject.percentage}%)
+                </td>
+                <td>
+                  <span
+                    className={`pill ${
+                      subject.percentage >= 75
+                        ? 'pill-good'
+                        : 'pill-bad'
+                    }`}
+                  >
+                    {subject.percentage >= 75
+                      ? 'On track'
+                      : 'Below 75%'}
+                  </span>
+                </td>
+              </tr>
+            ))}
           </tbody>
-
         </table>
 
         <button
@@ -348,32 +289,20 @@ export default function StudentDashboard() {
         >
           View detailed attendance
         </button>
-
       </div>
 
-      {/* PENDING ASSIGNMENTS */}
       <div className="panel">
-
         <div className="ledger-heading">
-          <h2>
-            Pending assignments
-          </h2>
-
+          <h2>Pending assignments</h2>
           <span className="count">
             {pendingAssignments.length} pending
           </span>
         </div>
 
         {pendingAssignments.length === 0 ? (
-
-          <p>
-            No pending assignments.
-          </p>
-
+          <p>No pending assignments.</p>
         ) : (
-
           <table className="ledger-table">
-
             <thead>
               <tr>
                 <th>Subject</th>
@@ -384,64 +313,36 @@ export default function StudentDashboard() {
             </thead>
 
             <tbody>
-
-              {pendingAssignments
-                .slice(0, 5)
-                .map((assignment) => (
-
-                  <tr key={assignment.id}>
-
-                    <td>
-                      {assignment.subject ||
-                        assignment.subject_code ||
-                        '-'}
-                    </td>
-
-                    <td>
-                      {assignment.title}
-                    </td>
-
-                    <td>
-                      {assignment.deadline ||
-                        '-'}
-                    </td>
-
-                    <td>
-                      <span className="pill pill-warn">
-                        Pending
-                      </span>
-                    </td>
-
-                  </tr>
-
-                ))}
-
+              {pendingAssignments.slice(0, 5).map((assignment) => (
+                <tr key={assignment.id}>
+                  <td>
+                    {assignment.subject ||
+                      assignment.subject_code ||
+                      '-'}
+                  </td>
+                  <td>{assignment.title}</td>
+                  <td>{assignment.deadline || '-'}</td>
+                  <td>
+                    <span className="pill pill-warn">Pending</span>
+                  </td>
+                </tr>
+              ))}
             </tbody>
-
           </table>
-
         )}
 
         <button
           className="btn btn-outline"
           style={{ marginTop: 14 }}
-          onClick={() =>
-            navigate('/assignments')
-          }
+          onClick={() => navigate('/assignments')}
         >
           View all assignments
         </button>
-
       </div>
 
-      {/* STUDENT INFORMATION */}
       <div className="panel">
-
         <div className="ledger-heading">
-          <h2>
-            Student information
-          </h2>
-
+          <h2>Student information</h2>
           <button
             className="btn btn-outline"
             onClick={() => navigate('/profile')}
@@ -451,60 +352,30 @@ export default function StudentDashboard() {
         </div>
 
         <table className="ledger-table">
-
           <tbody>
-
             <tr>
-              <td>
-                <strong>Student ID</strong>
-              </td>
-              <td>
-                {profile.student_code || '-'}
-              </td>
+              <td><strong>Student ID</strong></td>
+              <td>{profile.student_code || '-'}</td>
             </tr>
-
             <tr>
-              <td>
-                <strong>Department</strong>
-              </td>
-              <td>
-                {profile.department || '-'}
-              </td>
+              <td><strong>Department</strong></td>
+              <td>{profile.department || '-'}</td>
             </tr>
-
             <tr>
-              <td>
-                <strong>Course</strong>
-              </td>
-              <td>
-                {profile.course || '-'}
-              </td>
+              <td><strong>Course</strong></td>
+              <td>{profile.course || '-'}</td>
             </tr>
-
             <tr>
-              <td>
-                <strong>Email</strong>
-              </td>
-              <td>
-                {profile.email || '-'}
-              </td>
+              <td><strong>Email</strong></td>
+              <td>{profile.email || '-'}</td>
             </tr>
-
             <tr>
-              <td>
-                <strong>Academic Year</strong>
-              </td>
-              <td>
-                {profile.academic_year || '-'}
-              </td>
+              <td><strong>Academic Year</strong></td>
+              <td>{profile.academic_year || '-'}</td>
             </tr>
-
           </tbody>
-
         </table>
-
       </div>
-
     </div>
   );
 }
