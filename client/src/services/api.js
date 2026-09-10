@@ -58,6 +58,12 @@ export const api = {
   submitElectiveChoice: (data) => request('/students/electives', { method: 'POST', body: JSON.stringify(data) }),
   getSubjects: () => request('/subjects'),
 
+  getAnnouncements: () => request('/announcements'),
+  createAnnouncement: (data) => request('/announcements', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+
   getAssignments: (subjectId) => request(`/assignments${subjectId ? `?subjectId=${subjectId}` : ''}`),
   getFacultyAssignments: () => request('/assignments/faculty'),
   createAssignment: (formData) => request('/assignments', { method: 'POST', body: formData }),
