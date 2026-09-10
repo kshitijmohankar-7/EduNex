@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import FacultyStudentDetails from './FacultyStudentDetails';
+import Announcements from '../components/Announcements';
 
 export default function FacultyDashboard() {
   const navigate = useNavigate();
@@ -60,6 +61,8 @@ export default function FacultyDashboard() {
       <hr className="ledger-rule" />
 
       {error && <div className="panel"><div className="error-text">{error}</div></div>}
+
+      <Announcements compact />
 
       <div className="panel">
         <div className="ledger-heading">
