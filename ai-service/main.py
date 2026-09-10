@@ -17,7 +17,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from insights import generate_performance_insight
-from rag import answer_from_materials, index_document
+
+# RAG is optional. The Gemini student chatbot must be able to start even when
+# Chroma/hnswlib is unavailable on the local machine.
+try:
+    from rag import answer_from_materials, index_document
+    RAG_AVAILABLE = True
+except (ImportError, OSError) as exc:
+    answer_from_materials = None
+    index_document = None
+    RAG_AVAILABLE = False
+    print(f"RAG disabled: {exc}")
 
 load_dotenv()
 
@@ -124,7 +134,11 @@ def call_gemini(prompt: str) -> str | None:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "llm_configured": bool(os.getenv("GEMINI_API_KEY"))}
+    return {
+        "status": "ok",
+        "llm_configured": bool(os.getenv("GEMINI_API_KEY")),
+        "rag_available": RAG_AVAILABLE,
+    }
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -167,10 +181,16 @@ def chat(req: ChatRequest):
                 used_context=True,
             )
 
-    # Study-material RAG fallback.
+    # Study-material RAG fallback is optional because Chroma/hnswlib is a
+    # native dependency that may not have a Windows wheel for every Python version.
     if any(k in message.lower() for k in ["explain", "summarize", "notes", "unit", "pdf"]):
-        reply = answer_from_materials(message)
-        return ChatResponse(reply=reply, used_context=True)
+        if RAG_AVAILABLE and answer_from_materials is not None:
+            reply = answer_from_materials(message)
+            return ChatResponse(reply=reply, used_context=True)
+        return ChatResponse(
+            reply="Study-material RAG is not available on this installation yet. The Gemini student assistant is still available for general study questions.",
+            used_context=bool(context),
+        )
 
     return ChatResponse(
         reply=(
@@ -190,5 +210,12 @@ class IndexRequest(BaseModel):
 @app.post("/index-document")
 def index_document_endpoint(req: IndexRequest):
     """Called by the Node backend after a faculty member uploads material/PDF text."""
+    if not RAG_AVAILABLE or index_document is None:
+        return {
+            "chunks_indexed": 0,
+            "rag_available": False,
+            "message": "RAG is not available because its optional Chroma dependency is not installed.",
+        }
+
     chunks_indexed = index_document(req.subject_id, req.title, req.text)
-    return {"chunks_indexed": chunks_indexed}
+    return {"chunks_indexed": chunks_indexed, "rag_available": True}
