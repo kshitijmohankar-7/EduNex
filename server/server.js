@@ -7,6 +7,7 @@ const path = require('path');
 const authRoutes = require('./routes/authRoutes');
 const studentRoutes = require('./routes/studentRoutes');
 const facultyRoutes = require('./routes/facultyRoutes');
+const announcementRoutes = require('./routes/announcementRoutes');
 
 const assignmentSubmissionRoutes = require('./routes/assignmentSubmissionRoutes');
 const achievementRoutes = require('./routes/achievementRoutes');
@@ -37,6 +38,7 @@ app.use('/api/students', studentRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/students/achievements', achievementRoutes);
 app.use('/api/faculty', facultyRoutes);
+app.use('/api/announcements', announcementRoutes);
 app.use('/api/assignment-submissions', assignmentSubmissionRoutes);
 app.use('/api/marks', marksRoutes);
 app.use('/api/marksheets', marksheetRoutes);
