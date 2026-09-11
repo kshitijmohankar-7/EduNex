@@ -18,7 +18,7 @@ function detectRequestedData(message, history = []) {
     marks: allDashboard || planning || /\b(mark|marks|score|scores|grade|grades|ct1|ct-1|ct2|ct-2|internal|external|end sem|end-sem|performance|result)\b/.test(text),
     assignments: allDashboard || planning || /\b(assignment|assignments|deadline|submission|submitted|pending)\b/.test(text),
     announcements: allDashboard || /\b(announcement|announcements|notice|notices|circular|circulars)\b/.test(text),
-    materials: allDashboard || /\b(study material|study materials|material|materials|notes|pdf|document|documents|unit)\b/.test(text),
+    materials: allDashboard || /\b(study material|study materials|material|materials|notes|pdf|document|documents|unit|chapter|lecture notes|class notes)\b/.test(text),
     achievements: allDashboard || /\b(achievement|achievements|certificate|certificates|award|awards|skills)\b/.test(text),
     electives: allDashboard || /\b(elective|electives|liberal learning|lll|subject choice|subject selection)\b/.test(text),
     marksheets: allDashboard || /\b(marksheet|marksheets|sgpa|cgpa|semester result)\b/.test(text),
@@ -48,8 +48,6 @@ async function buildAuthorizedContext(user, message, history = []) {
     ],
   };
 
-  // Only fetch the dashboard sections needed for this conversation. This is
-  // substantially faster than loading every table for every chat message.
   const jobs = [];
 
   if (requested.profile) {
@@ -163,7 +161,7 @@ async function buildAuthorizedContext(user, message, history = []) {
   if (requested.materials) {
     jobs.push(
       pool.query(
-        `SELECT sm.id, sm.title, sm.unit, sm.file_type, sm.uploaded_at,
+        `SELECT sm.id, sm.subject_id, sm.title, sm.unit, sm.file_type, sm.uploaded_at,
                 s.name AS subject, s.code
          FROM study_materials sm
          JOIN subjects s ON s.id = sm.subject_id
