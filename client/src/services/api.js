@@ -95,9 +95,9 @@ export const api = {
   getMaterials: (subjectId) => request(`/materials${subjectId ? `?subjectId=${subjectId}` : ''}`),
   createMaterial: (formData) => request('/materials', { method: 'POST', body: formData }),
 
-  chat: (message) => request('/ai/chat', {
+  chat: (message, history = []) => request('/ai/chat', {
     method: 'POST',
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, history }),
   }),
 
   getDashboard: async () => {
