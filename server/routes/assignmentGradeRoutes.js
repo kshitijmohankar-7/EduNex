@@ -1,0 +1,2 @@
+const express=require('express');const router=express.Router();const authenticate=require('../middleware/auth');const authorize=require('../middleware/roleCheck');const{getStudentGrades,getGradingSubmissions,gradeSubmission}=require('../controllers/assignmentGradeController');
+router.get('/student',authenticate,authorize('student'),getStudentGrades);router.get('/:assignmentId',authenticate,authorize('faculty'),getGradingSubmissions);router.patch('/:submissionId/grade',authenticate,authorize('faculty'),gradeSubmission);module.exports=router;
