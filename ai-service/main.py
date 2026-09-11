@@ -18,8 +18,6 @@ from pydantic import BaseModel, Field
 
 from insights import generate_performance_insight
 
-# RAG is optional. The Gemini student chatbot must be able to start even when
-# Chroma/hnswlib is unavailable on the local machine.
 try:
     from rag import answer_from_materials, index_document
     RAG_AVAILABLE = True
@@ -52,14 +50,9 @@ class ChatResponse(BaseModel):
     used_context: bool = False
 
 
-def build_student_prompt(
-    message: str,
-    context: Dict[str, Any],
-    history: List[Dict[str, str]],
-) -> str:
+def build_student_prompt(message: str, context: Dict[str, Any], history: List[Dict[str, str]]) -> str:
     """Build a compact, strongly grounded prompt from authorized data."""
     sections = []
-
     section_map = [
         ("PROFILE", "profile"),
         ("ATTENDANCE", "attendance"),
@@ -77,36 +70,31 @@ def build_student_prompt(
             sections.append(f"{title}:\n{json.dumps(context[key], default=str, indent=2)}")
 
     dashboard_context = "\n\n".join(sections) or "No student dashboard data was needed for this question."
-
     conversation = "\n".join(
         f"{item.get('role', 'user').upper()}: {item.get('content', '')}"
-        for item in history[-8:]
+        for item in history[-6:]
     )
 
     return f"""
 You are EduNex AI, the student's personal academic assistant.
 
-Answer the CURRENT QUESTION directly. Be complete enough to fully answer it,
-but avoid unnecessary filler.
+Answer the CURRENT QUESTION directly. Be complete but concise.
 
 IMPORTANT RULES:
-1. For educational/concept questions, give a complete beginner-friendly explanation.
-   Do not stop after the definition. Include the key idea, how it works, common
-   types or components when relevant, a simple example, and practical use when useful.
-2. Never intentionally truncate an explanation. Finish the answer and conclusion.
+1. For educational questions, give a complete beginner-friendly explanation: definition,
+   key idea, how it works, relevant types/components, a simple example, and practical use.
+2. Never intentionally truncate an explanation. Finish the answer.
 3. For student-data questions, use ONLY the supplied dashboard data. Never invent data.
-4. For attendance, list EVERY subject supplied in ATTENDANCE, with present/total
-   and percentage. Also state the overall percentage when available. Do not omit rows.
-5. For marks, list all relevant supplied marks and clearly identify exam type and subject.
-6. For assignments, include all relevant assignments and their submission status/deadline.
-7. For announcements, use the supplied announcements. If asked to summarize an
-   announcement, identify the relevant announcement and give a short, accurate summary.
-8. For follow-up questions such as "that announcement" or "explain the second one",
-   use the conversation history together with the supplied dashboard data.
-9. If the requested student information is not supplied, say it is not available.
+4. For attendance, list EVERY subject supplied in ATTENDANCE with present/total and percentage,
+   and state the overall percentage when available. Never omit rows.
+5. For marks, list all relevant supplied marks and identify exam type and subject.
+6. For assignments, include relevant assignments with submission status and deadline.
+7. For announcements, use the supplied announcements. For summaries, be short and accurate.
+8. For follow-ups such as "that announcement" or "explain the second one", use recent history.
+9. If requested student information is not supplied, say it is not available.
 10. Do not claim access to private data outside the supplied dashboard context.
 11. Use simple language suitable for a college student.
-12. You may use Markdown headings, bullets, bold text, and short code examples.
+12. Use Markdown headings, bullets, bold text, and short code examples when useful.
 
 RECENT CONVERSATION:
 {conversation or "No previous conversation."}
@@ -120,28 +108,20 @@ CURRENT QUESTION:
 
 
 def call_gemini(prompt: str) -> str | None:
-    """Call Gemini and log provider failures without exposing the API key."""
+    """Call Gemini with a bounded timeout so a slow provider cannot hang the UI."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         print("Gemini request skipped: GEMINI_API_KEY is not configured.")
         return None
 
     model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{model}:generateContent"
-    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
     payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": prompt}],
-            }
-        ],
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.25,
-            "maxOutputTokens": 1400,
+            "maxOutputTokens": 1200,
         },
     }
 
@@ -149,15 +129,13 @@ def call_gemini(prompt: str) -> str | None:
     req = urlrequest.Request(
         url,
         data=body,
-        headers={
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key,
-        },
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
         method="POST",
     )
 
     try:
-        with urlrequest.urlopen(req, timeout=30) as response:
+        # Keep the chat responsive if Gemini/network is temporarily slow.
+        with urlrequest.urlopen(req, timeout=20) as response:
             data = json.loads(response.read().decode("utf-8"))
 
         candidates = data.get("candidates", [])
@@ -199,49 +177,38 @@ def health():
 def chat(req: ChatRequest):
     message = req.message.strip()
     context = req.context
-    history = req.history[-8:]
+    history = req.history[-6:]
 
     if not message:
         return ChatResponse(reply="Please enter a question.", used_context=bool(context))
 
-    # Use the LLM for both student-data questions and normal study questions.
-    # Node has already limited the context to data the authenticated student may see.
     llm_reply = call_gemini(build_student_prompt(message, context, history))
     if llm_reply:
         return ChatResponse(reply=llm_reply, used_context=bool(context))
 
-    # Safe fallback when no LLM key is configured or the provider is unavailable.
+    # Deterministic fallbacks keep dashboard questions useful when Gemini times out.
     lower = message.lower()
     if any(k in lower for k in ["attendance", "present", "absent"]):
-        return ChatResponse(
-            reply=generate_performance_insight(message, context),
-            used_context=True,
-        )
+        return ChatResponse(reply=generate_performance_insight(message, context), used_context=True)
 
     if any(k in lower for k in ["mark", "ct1", "ct-1", "ct2", "ct-2", "performance"]):
-        return ChatResponse(
-            reply=generate_performance_insight(message, context),
-            used_context=True,
-        )
+        return ChatResponse(reply=generate_performance_insight(message, context), used_context=True)
 
     assignments = context.get("assignments", [])
-    if "assignment" in lower and assignments:
+    if "assignment" in lower and isinstance(assignments, list) and assignments:
         lines = []
         for item in assignments:
             status = item.get("submission_status", "not_submitted")
             deadline = item.get("deadline") or "no deadline"
             lines.append(
-                f"{item.get('subject', 'Subject')}: {item.get('title', 'Assignment')} — {status}, deadline {deadline}"
+                f"- {item.get('subject', 'Subject')}: {item.get('title', 'Assignment')} — "
+                f"{status}, deadline {deadline}"
             )
-        return ChatResponse(
-            reply="Here are your assignments:\n" + "\n".join(lines),
-            used_context=True,
-        )
+        return ChatResponse(reply="Here are your assignments:\n" + "\n".join(lines), used_context=True)
 
     if any(k in lower for k in ["explain", "summarize", "notes", "unit", "pdf"]):
         if RAG_AVAILABLE and answer_from_materials is not None:
-            reply = answer_from_materials(message)
-            return ChatResponse(reply=reply, used_context=True)
+            return ChatResponse(reply=answer_from_materials(message), used_context=True)
 
     return ChatResponse(
         reply="I could not generate a complete AI response right now. Please try again.",
