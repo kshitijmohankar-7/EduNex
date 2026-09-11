@@ -25,7 +25,9 @@ from pypdf import PdfReader
 
 
 CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_store")
-COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "study_materials")
+# v2 avoids mixing older 384-dimensional sentence-transformer data with the
+# new Gemini 768-dimensional embedding space.
+COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "study_materials_v2")
 EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
 EMBEDDING_DIMENSIONS = int(os.getenv("GEMINI_EMBEDDING_DIMENSIONS", "768"))
 
@@ -71,8 +73,6 @@ def _embed_documents(texts: List[str]) -> List[List[float]]:
     client = _gemini_client()
     embeddings: List[List[float]] = []
 
-    # Gemini supports multiple text inputs in one embedding request. Keep the
-    # batch moderate so a large upload does not create an oversized request.
     for start in range(0, len(texts), 50):
         batch = texts[start : start + 50]
         result = client.models.embed_content(
@@ -114,14 +114,15 @@ def index_document(subject_id: int, title: str, text: str) -> int:
 
     document_key = _document_key(subject_id, title)
 
-    # Re-indexing the same title should replace old chunks rather than create
-    # duplicate retrieval results after a faculty member updates a material.
-    existing = _collection.get(where={"document_key": document_key}, include=[])
+    existing = _collection.get(where={"document_key": document_key})
     existing_ids = existing.get("ids", []) if existing else []
     if existing_ids:
         _collection.delete(ids=existing_ids)
 
     embeddings = _embed_documents(chunks)
+    if len(embeddings) != len(chunks):
+        raise RuntimeError("Embedding count does not match chunk count")
+
     ids = [f"{document_key}-{i}" for i in range(len(chunks))]
     metadatas = [
         {
