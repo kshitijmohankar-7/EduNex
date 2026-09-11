@@ -91,7 +91,7 @@ def call_gemini(prompt: str) -> str | None:
         print("Gemini request skipped: GEMINI_API_KEY is not configured.")
         return None
 
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:generateContent"
@@ -156,7 +156,7 @@ def health():
         "status": "ok",
         "llm_configured": bool(os.getenv("GEMINI_API_KEY")),
         "rag_available": RAG_AVAILABLE,
-        "gemini_model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        "gemini_model": os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
     }
 
 
