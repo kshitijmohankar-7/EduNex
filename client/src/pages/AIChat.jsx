@@ -7,6 +7,7 @@ const SUGGESTIONS = [
   'Which subjects should I focus on?',
   'Help me make a study plan',
   'What assignments do I need to complete?',
+  'According to my study materials, explain the latest topic',
 ];
 
 function renderInline(text) {
@@ -23,7 +24,7 @@ function renderInline(text) {
   });
 }
 
-function AssistantMessage({ text }) {
+function AssistantMessage({ text, sources = [], usedRag = false }) {
   const lines = String(text || '').split('\n');
   const blocks = [];
   let paragraph = [];
@@ -120,14 +121,28 @@ function AssistantMessage({ text }) {
   flushParagraph();
   flushList();
 
-  return blocks.length ? blocks : <span>{text}</span>;
+  return (
+    <>
+      {blocks.length ? blocks : <span>{text}</span>}
+      {usedRag && sources.length > 0 && (
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--line)', fontSize: 12 }}>
+          <strong>Sources from study materials:</strong>
+          <ul style={{ margin: '5px 0 0', paddingLeft: 18 }}>
+            {[...new Map(sources.map((source) => [source.title, source])).values()].map((source, index) => (
+              <li key={`${source.title}-${index}`}>{source.title}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function AIChat() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      text: "Hi! I'm EduNex AI. I can access the student information available to your EduNex dashboard, including attendance, published marks, assignments, announcements, study materials, achievements, electives, marksheets, and profile details. I can also explain academic concepts completely.",
+      text: "Hi! I'm EduNex AI. I can access the student information available to your EduNex dashboard, including attendance, published marks, assignments, announcements, study materials, achievements, electives, marksheets, and profile details. I can also explain academic concepts completely and answer questions from your uploaded study materials.",
     },
   ]);
   const [input, setInput] = useState('');
@@ -161,6 +176,8 @@ export default function AIChat() {
         {
           role: 'assistant',
           text: response.reply || 'I could not generate a response right now.',
+          sources: response.sources || [],
+          usedRag: Boolean(response.used_rag),
         },
       ]);
     } catch (err) {
@@ -175,7 +192,7 @@ export default function AIChat() {
       <div className="ledger-heading">
         <div>
           <h2>EduNex AI Assistant</h2>
-          <span className="count">Personalized student assistant · Dashboard-aware</span>
+          <span className="count">Personalized student assistant · Dashboard-aware · RAG-enabled</span>
         </div>
       </div>
 
@@ -186,7 +203,13 @@ export default function AIChat() {
           <div className="chat-messages">
             {messages.map((message, index) => (
               <div key={index} className={`chat-bubble ${message.role}`}>
-                {message.role === 'assistant' ? <AssistantMessage text={message.text} /> : message.text}
+                {message.role === 'assistant' ? (
+                  <AssistantMessage
+                    text={message.text}
+                    sources={message.sources}
+                    usedRag={message.usedRag}
+                  />
+                ) : message.text}
               </div>
             ))}
 
