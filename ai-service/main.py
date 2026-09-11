@@ -121,7 +121,7 @@ def call_gemini(prompt: str) -> str | None:
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.25,
-            "maxOutputTokens": 1200,
+            "maxOutputTokens": 65536,
         },
     }
 
