@@ -8,7 +8,7 @@ context that Node explicitly sends for the authenticated student.
 """
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib import error, request as urlrequest
 
 from dotenv import load_dotenv
@@ -19,11 +19,20 @@ from pydantic import BaseModel, Field
 from insights import generate_performance_insight
 
 try:
-    from rag import answer_from_materials, index_document
+    from rag import (
+        answer_from_materials,
+        collection_stats,
+        index_document,
+        index_file,
+        retrieve_materials,
+    )
     RAG_AVAILABLE = True
-except (ImportError, OSError) as exc:
+except (ImportError, OSError, RuntimeError) as exc:
     answer_from_materials = None
+    collection_stats = None
     index_document = None
+    index_file = None
+    retrieve_materials = None
     RAG_AVAILABLE = False
     print(f"RAG disabled: {exc}")
 
@@ -48,9 +57,28 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     used_context: bool = False
+    used_rag: bool = False
+    sources: List[Dict[str, Any]] = Field(default_factory=list)
 
 
-def build_student_prompt(message: str, context: Dict[str, Any], history: List[Dict[str, str]]) -> str:
+class IndexRequest(BaseModel):
+    subject_id: int
+    title: str
+    text: str
+
+
+class IndexFileRequest(BaseModel):
+    subject_id: int
+    title: str
+    file_path: str
+
+
+def build_student_prompt(
+    message: str,
+    context: Dict[str, Any],
+    history: List[Dict[str, str]],
+    rag_chunks: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     """Build a compact, strongly grounded prompt from authorized data."""
     sections = []
     section_map = [
@@ -75,6 +103,28 @@ def build_student_prompt(message: str, context: Dict[str, Any], history: List[Di
         for item in history[-6:]
     )
 
+    rag_context = ""
+    if rag_chunks:
+        source_blocks = []
+        for number, item in enumerate(rag_chunks, start=1):
+            source_blocks.append(
+                f"SOURCE {number} — {item.get('title', 'Study material')}\n"
+                f"{item.get('text', '')}"
+            )
+        rag_context = "\n\n".join(source_blocks)
+
+    rag_rules = ""
+    if rag_chunks:
+        rag_rules = """
+RAG / STUDY MATERIAL RULES:
+- The RAG SOURCES below are retrieved from uploaded EduNex study materials.
+- For this question, treat those sources as the primary authority.
+- Answer using the retrieved sources and do not invent course-specific facts.
+- If the sources do not contain enough information, explicitly say what is missing.
+- You may explain or simplify the retrieved material, but do not silently replace it with unrelated facts.
+- Mention the relevant source/material title when it helps the student understand where the answer came from.
+"""
+
     return f"""
 You are EduNex AI, the student's personal academic assistant.
 
@@ -97,12 +147,15 @@ IMPORTANT RULES:
 11. Use simple language suitable for a college student.
 12. Use Markdown headings, bullets, bold text, and short code examples when useful.
 13. Do not output internal reasoning or chain-of-thought. Give the useful explanation directly.
-
+{rag_rules}
 RECENT CONVERSATION:
 {conversation or "No previous conversation."}
 
 AUTHORIZED STUDENT DASHBOARD DATA:
 {dashboard_context}
+
+RAG SOURCES:
+{rag_context or "No RAG sources were retrieved for this question."}
 
 CURRENT QUESTION:
 {message}
@@ -110,7 +163,7 @@ CURRENT QUESTION:
 
 
 def call_gemini(prompt: str) -> str | None:
-    """Call Gemini with latency-friendly settings so normal questions do not time out."""
+    """Call Gemini with latency-friendly settings for normal chat and RAG."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         print("Gemini request skipped: GEMINI_API_KEY is not configured.")
@@ -119,9 +172,6 @@ def call_gemini(prompt: str) -> str | None:
     model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-    # Gemini 3.x uses dynamic thinking. Low thinking is appropriate for the
-    # normal educational/chat workload and avoids unnecessary latency. The
-    # output ceiling remains generous enough for long explanations.
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -139,8 +189,6 @@ def call_gemini(prompt: str) -> str | None:
     )
 
     try:
-        # A longer network timeout prevents valid Gemini answers from being
-        # converted into the generic fallback during temporary provider slowness.
         with urlrequest.urlopen(req, timeout=45) as response:
             data = json.loads(response.read().decode("utf-8"))
 
@@ -151,7 +199,9 @@ def call_gemini(prompt: str) -> str | None:
 
         candidate = candidates[0]
         parts = candidate.get("content", {}).get("parts", [])
-        text = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
+        text = "".join(
+            part.get("text", "") for part in parts if isinstance(part, dict)
+        ).strip()
         if not text:
             print(
                 "Gemini returned an empty response. "
@@ -205,14 +255,33 @@ def educational_fallback(message: str) -> str | None:
     return None
 
 
+def is_rag_question(message: str) -> bool:
+    text = message.lower()
+    phrases = [
+        "study material", "study materials", "my notes", "our notes",
+        "uploaded material", "uploaded notes", "according to the notes",
+        "according to my notes", "from the pdf", "in the pdf", "from pdf",
+        "in my pdf", "from the material", "in the material", "unit 1",
+        "unit 2", "unit 3", "unit 4", "unit 5", "unit 6", "chapter",
+        "lecture notes", "class notes", "explain this topic from",
+    ]
+    return any(phrase in text for phrase in phrases)
+
+
 @app.get("/health")
 def health():
-    return {
+    result = {
         "status": "ok",
         "llm_configured": bool(os.getenv("GEMINI_API_KEY")),
         "rag_available": RAG_AVAILABLE,
         "gemini_model": os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
     }
+    if RAG_AVAILABLE and collection_stats is not None:
+        try:
+            result["rag"] = collection_stats()
+        except Exception as exc:
+            result["rag_error"] = str(exc)
+    return result
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -224,9 +293,44 @@ def chat(req: ChatRequest):
     if not message:
         return ChatResponse(reply="Please enter a question.", used_context=bool(context))
 
-    llm_reply = call_gemini(build_student_prompt(message, context, history))
+    rag_chunks: List[Dict[str, Any]] = []
+    rag_requested = is_rag_question(message)
+
+    if rag_requested and RAG_AVAILABLE and retrieve_materials is not None:
+        try:
+            rag_chunks = retrieve_materials(message, top_k=6)
+        except Exception as exc:
+            print(f"RAG retrieval error: {exc}")
+
+    # A RAG question with no indexed sources should not silently become a
+    # hallucinated course-specific answer.
+    if rag_requested and not rag_chunks:
+        return ChatResponse(
+            reply=(
+                "I couldn't find relevant content in the uploaded study materials. "
+                "Please make sure the required PDF/DOCX has been uploaded and indexed, "
+                "then try the question again."
+            ),
+            used_context=bool(context),
+            used_rag=True,
+        )
+
+    prompt = build_student_prompt(message, context, history, rag_chunks)
+    llm_reply = call_gemini(prompt)
     if llm_reply:
-        return ChatResponse(reply=llm_reply, used_context=bool(context))
+        sources = [
+            {
+                "title": item.get("title", "Study material"),
+                "chunk": item.get("chunk_index", 0),
+            }
+            for item in rag_chunks
+        ]
+        return ChatResponse(
+            reply=llm_reply,
+            used_context=bool(context),
+            used_rag=bool(rag_chunks),
+            sources=sources,
+        )
 
     # Deterministic fallbacks keep dashboard questions useful when Gemini times out.
     lower = message.lower()
@@ -252,10 +356,6 @@ def chat(req: ChatRequest):
     if offline_reply:
         return ChatResponse(reply=offline_reply, used_context=False)
 
-    if any(k in lower for k in ["explain", "summarize", "notes", "unit", "pdf"]):
-        if RAG_AVAILABLE and answer_from_materials is not None:
-            return ChatResponse(reply=answer_from_materials(message), used_context=True)
-
     return ChatResponse(
         reply=(
             "I couldn't reach the AI model right now. Your dashboard data is safe. "
@@ -265,21 +365,37 @@ def chat(req: ChatRequest):
     )
 
 
-class IndexRequest(BaseModel):
-    subject_id: int
-    title: str
-    text: str
-
-
 @app.post("/index-document")
 def index_document_endpoint(req: IndexRequest):
-    """Called by the Node backend after a faculty member uploads material/PDF text."""
+    """Index already-extracted text supplied by the Node backend."""
     if not RAG_AVAILABLE or index_document is None:
         return {
             "chunks_indexed": 0,
             "rag_available": False,
-            "message": "RAG is not available because its optional Chroma dependency is not installed.",
+            "message": "RAG dependencies are not available.",
         }
 
-    chunks_indexed = index_document(req.subject_id, req.title, req.text)
-    return {"chunks_indexed": chunks_indexed, "rag_available": True}
+    try:
+        chunks_indexed = index_document(req.subject_id, req.title, req.text)
+        return {"chunks_indexed": chunks_indexed, "rag_available": True}
+    except Exception as exc:
+        print(f"RAG document indexing error: {exc}")
+        return {"chunks_indexed": 0, "rag_available": True, "error": str(exc)}
+
+
+@app.post("/index-file")
+def index_file_endpoint(req: IndexFileRequest):
+    """Extract and index an uploaded PDF/DOCX file from the shared local filesystem."""
+    if not RAG_AVAILABLE or index_file is None:
+        return {
+            "chunks_indexed": 0,
+            "rag_available": False,
+            "message": "RAG dependencies are not available.",
+        }
+
+    try:
+        chunks_indexed = index_file(req.subject_id, req.title, req.file_path)
+        return {"chunks_indexed": chunks_indexed, "rag_available": True}
+    except Exception as exc:
+        print(f"RAG file indexing error: {exc}")
+        return {"chunks_indexed": 0, "rag_available": True, "error": str(exc)}
