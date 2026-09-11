@@ -277,56 +277,142 @@ def educational_fallback(message: str) -> str | None:
     return None
 
 
+def _clean_retrieved_text(text: str) -> str:
+    """Normalize extracted PDF text without changing its factual content."""
+    text = re.sub(r"\s+", " ", text or "").strip()
+    # Remove common PDF page markers/noise while preserving the note's wording.
+    text = re.sub(r"\bTGPCET,\s*NagpurPage\s*\d+\b", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\s{2,}", " ", text).strip()
+
+
+def _deduplicate_retrieved_chunks(rag_chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Sort retrieved chunks and remove duplicate/near-duplicate overlap."""
+    ordered = sorted(
+        rag_chunks,
+        key=lambda item: (
+            str(item.get("title", "")),
+            int(item.get("chunk_index", 0) or 0),
+        ),
+    )
+    result: List[Dict[str, Any]] = []
+    seen = set()
+    for item in ordered:
+        cleaned = _clean_retrieved_text(str(item.get("text", "")))
+        if not cleaned:
+            continue
+        fingerprint = re.sub(r"\W+", " ", cleaned.lower()).strip()
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        copied = dict(item)
+        copied["text"] = cleaned
+        result.append(copied)
+    return result
+
+
+def _topic_label(text: str, index: int) -> str:
+    """Infer a readable topic label from the retrieved note text."""
+    patterns = [
+        r"\b(Introduction to Java)\b",
+        r"\b(Java Example)\b",
+        r"\b(Application)\b",
+        r"\b(Types of Java Applications)\b",
+        r"\b(Java Platforms / Editions)\b",
+        r"\b(History of Java)\b",
+        r"\b(Java Version History)\b",
+        r"\b(Features of Java)\b",
+        r"\b(Data Types)\b",
+        r"\b(Variables)\b",
+        r"\b(Operators)\b",
+        r"\b(Control structures)\b",
+        r"\b(Selection statements)\b",
+        r"\b(Looping)\b",
+        r"\b(Java Methods)\b",
+        r"\b(Method Overloading)\b",
+        r"\b(Math Class)\b",
+        r"\b(Arrays)\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return f"Retrieved section {index}"
+
+
+def _make_readable_paragraphs(text: str, max_sentences: int = 5) -> List[str]:
+    """Break dense extracted note text into readable paragraphs."""
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    if not sentences:
+        return [text]
+    paragraphs = []
+    for start in range(0, len(sentences), max_sentences):
+        paragraphs.append(" ".join(sentences[start : start + max_sentences]))
+    return paragraphs
+
+
 def rag_material_fallback(
     message: str,
     rag_chunks: List[Dict[str, Any]],
     model_status: str,
     retry_after_seconds: Optional[int],
 ) -> str:
-    """Provide useful retrieved study material when generation is unavailable."""
-    source_titles = []
-    seen_titles = set()
-    for item in rag_chunks:
-        title = item.get("title", "Study material")
-        if title not in seen_titles:
-            seen_titles.add(title)
-            source_titles.append(title)
+    """Turn retrieved notes into a readable offline study answer when Gemini is unavailable."""
+    chunks = _deduplicate_retrieved_chunks(rag_chunks)
+    if not chunks:
+        return "I found the study material, but it did not contain readable text."
 
     status_text = (
         "Gemini generation is temporarily unavailable because the API quota/rate limit has been reached."
         if model_status == "quota_exhausted"
         else "Gemini generation is temporarily unavailable."
     )
-    retry_text = f" You can retry after about {retry_after_seconds} seconds." if retry_after_seconds else ""
+    retry_text = f" You can try the AI-generated version again after about {retry_after_seconds} seconds." if retry_after_seconds else ""
 
+    # The fallback deliberately does not invent facts. It reformats the retrieved
+    # source into a study-friendly outline so the student still gets useful notes.
     lines = [
-        "## Study Material Retrieval",
-        "",
-        "I successfully found relevant content in your uploaded study material, but I cannot generate the full AI explanation right now.",
+        "## Study Material — Offline Mode",
         "",
         f"**{status_text}**{retry_text}",
         "",
-        "### Retrieved material",
+        "I found the relevant content in your uploaded notes. I’m showing it in a cleaner, topic-by-topic study format so you can continue learning without waiting for Gemini.",
+        "",
+        "> **Note:** This answer is built only from the retrieved study material. No course-specific facts have been added.",
     ]
 
-    for index, item in enumerate(rag_chunks, start=1):
+    used_labels = set()
+    for index, item in enumerate(chunks, start=1):
+        text = item["text"]
+        label = _topic_label(text, index)
+        if label in used_labels:
+            label = f"{label} — continued"
+        used_labels.add(label)
         title = item.get("title", "Study material")
-        chunk_index = item.get("chunk_index", 0)
-        text = str(item.get("text", "")).strip()
-        if not text:
-            continue
+        chunk_index = int(item.get("chunk_index", 0) or 0) + 1
+
         lines.extend([
             "",
-            f"**{index}. {title} — section {int(chunk_index) + 1}**",
-            text,
+            f"### {index}. {label}",
+            f"**Source:** {title} · section {chunk_index}",
+            "",
         ])
+        paragraphs = _make_readable_paragraphs(text)
+        for paragraph in paragraphs:
+            lines.extend([paragraph, ""])
 
-    if source_titles:
-        lines.extend(["", "### Sources", *[f"- {title}" for title in source_titles]])
+    source_titles = []
+    seen_titles = set()
+    for item in chunks:
+        title = item.get("title", "Study material")
+        if title not in seen_titles:
+            seen_titles.add(title)
+            source_titles.append(title)
 
+    lines.extend(["### Sources", *[f"- {title}" for title in source_titles]])
     lines.extend([
         "",
-        "Once Gemini generation is available again, EduNex AI will use these same retrieved sections to produce the complete topic-by-topic explanation.",
+        "When Gemini generation is available, EduNex will use these same retrieved sections to create the fuller beginner-friendly explanation automatically.",
     ])
     return "\n".join(lines)
 
@@ -411,7 +497,7 @@ def chat(req: ChatRequest):
         )
 
     # If RAG retrieved material but Gemini cannot generate, never discard the
-    # retrieved evidence. Return it with a clear service-status explanation.
+    # retrieved evidence. Return a readable offline study answer instead.
     if rag_chunks:
         sources = [
             {
