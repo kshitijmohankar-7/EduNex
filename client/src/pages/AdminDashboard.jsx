@@ -1,31 +1,30 @@
-import Announcements from '../components/Announcements';
+import { useAuth } from '../context/AuthContext';
 
 export default function AdminDashboard() {
+  const { user } = useAuth();
+
   return (
     <div>
-      <div className="ledger-heading"><h2>College overview</h2></div>
-      <hr className="ledger-rule" />
-
-      <div className="card-grid">
-        <div className="stat-card"><div className="stat-label">Departments</div><div className="stat-value">6</div></div>
-        <div className="stat-card"><div className="stat-label">Faculty</div><div className="stat-value">84</div></div>
-        <div className="stat-card"><div className="stat-label">Students</div><div className="stat-value">2,140</div></div>
-        <div className="stat-card"><div className="stat-label">Active courses</div><div className="stat-value">12</div></div>
+      <div className="ledger-heading">
+        <div>
+          <h2>Welcome, {user?.fullName || 'Administrator'}</h2>
+          <p style={{ margin: '6px 0 0', color: 'var(--muted-text)' }}>
+            Use the Menu button to open College Overview and Announcements.
+          </p>
+        </div>
       </div>
 
-      <Announcements />
+      <hr className="ledger-rule" />
 
       <div className="panel">
-        <div className="ledger-heading"><h2>System management</h2></div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button className="btn">Manage departments</button>
-          <button className="btn btn-outline">Manage courses</button>
-          <button className="btn btn-outline">Manage faculty</button>
-          <button className="btn btn-outline">Manage students</button>
-        </div>
-        <p style={{ fontSize: 12, color: 'var(--muted-text)', marginTop: 14 }}>
-          Administrative management tools can be connected to their respective API modules as they are implemented.
-        </p>
+        <div className="ledger-heading"><h2>Administrator Details</h2></div>
+        <table className="ledger-table">
+          <tbody>
+            <tr><td><strong>Name</strong></td><td>{user?.fullName || '-'}</td></tr>
+            <tr><td><strong>Email</strong></td><td>{user?.email || '-'}</td></tr>
+            <tr><td><strong>Role</strong></td><td>Administrator</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
