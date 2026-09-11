@@ -33,6 +33,47 @@ const NAV_BY_ROLE = {
   ],
 };
 
+const overlayStyle = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 998,
+  border: 0,
+  padding: 0,
+  background: 'rgba(10, 16, 31, 0.48)',
+  cursor: 'pointer',
+};
+
+const menuButtonStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  minHeight: 38,
+  padding: '8px 13px',
+  border: '1px solid var(--ink)',
+  borderRadius: 'var(--radius)',
+  background: 'var(--ink)',
+  color: 'var(--parchment)',
+  cursor: 'pointer',
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+const menuIconStyle = {
+  display: 'inline-flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  gap: 3,
+  width: 15,
+};
+
+const menuLineStyle = {
+  display: 'block',
+  width: 15,
+  height: 2,
+  borderRadius: 2,
+  background: 'currentColor',
+};
+
 export default function AppShell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -53,13 +94,39 @@ export default function AppShell() {
 
   return (
     <div className="app-shell">
-      {menuOpen && <button className="menu-overlay" aria-label="Close menu" onClick={closeMenu} />}
+      {menuOpen && <button type="button" aria-label="Close menu" onClick={closeMenu} style={overlayStyle} />}
 
-      <aside className={`sidebar${menuOpen ? ' menu-open' : ''}`} aria-hidden={!menuOpen}>
+      <aside
+        className="sidebar"
+        aria-hidden={!menuOpen}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          zIndex: 999,
+          width: 280,
+          maxWidth: '88vw',
+          overflowY: 'auto',
+          boxShadow: menuOpen ? '10px 0 30px rgba(0,0,0,0.24)' : 'none',
+          transform: menuOpen ? 'translateX(0)' : 'translateX(-105%)',
+          transition: 'transform 180ms ease',
+        }}
+      >
         <div className="brand">EduNex</div>
         <div className="brand-tag">Academic Ledger</div>
 
-        <div className="sidebar-menu-title">Menu</div>
+        <div style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: 'var(--brass-dim)',
+          marginBottom: 10,
+        }}>
+          Menu
+        </div>
+
         <ul className="nav-list">
           {items.map((item) => (
             <li key={item.to}>
@@ -81,17 +148,21 @@ export default function AppShell() {
         </div>
       </aside>
 
-      <div className="main-area">
+      <div className="main-area" style={{ width: '100%' }}>
         <header className="topbar">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
               type="button"
-              className="menu-button"
               onClick={() => setMenuOpen((open) => !open)}
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={menuOpen}
+              style={menuButtonStyle}
             >
-              <span className="menu-icon" aria-hidden="true"><span /><span /><span /></span>
+              <span aria-hidden="true" style={menuIconStyle}>
+                <span style={menuLineStyle} />
+                <span style={menuLineStyle} />
+                <span style={menuLineStyle} />
+              </span>
               <span>{menuOpen ? 'Close' : 'Menu'}</span>
             </button>
             <div className="topbar-title">
