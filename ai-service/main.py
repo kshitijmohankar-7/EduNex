@@ -85,15 +85,16 @@ Student question:
 
 
 def call_gemini(prompt: str) -> str | None:
-    """Call Gemini only when a key is configured; return None on provider failure."""
-    api_key = os.getenv("GEMINI_API_KEY")
+    """Call Gemini and log provider failures without exposing the API key."""
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
+        print("Gemini request skipped: GEMINI_API_KEY is not configured.")
         return None
 
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{model}:generateContent?key={api_key}"
+        f"{model}:generateContent"
     )
 
     payload = {
@@ -113,7 +114,10 @@ def call_gemini(prompt: str) -> str | None:
     req = urlrequest.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        },
         method="POST",
     )
 
@@ -123,12 +127,26 @@ def call_gemini(prompt: str) -> str | None:
 
         candidates = data.get("candidates", [])
         if not candidates:
+            print(f"Gemini returned no candidates. Response: {json.dumps(data)[:1000]}")
             return None
 
         parts = candidates[0].get("content", {}).get("parts", [])
         text = "".join(part.get("text", "") for part in parts).strip()
+        if not text:
+            print(f"Gemini returned an empty response. Response: {json.dumps(data)[:1000]}")
         return text or None
-    except (error.URLError, error.HTTPError, TimeoutError, ValueError, json.JSONDecodeError):
+    except error.HTTPError as exc:
+        try:
+            response_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            response_body = "<unable to read error response>"
+        print(f"Gemini HTTP error {exc.code}: {response_body[:2000]}")
+        return None
+    except (error.URLError, TimeoutError) as exc:
+        print(f"Gemini connection error: {exc}")
+        return None
+    except (ValueError, json.JSONDecodeError) as exc:
+        print(f"Gemini response parsing error: {exc}")
         return None
 
 
@@ -138,6 +156,7 @@ def health():
         "status": "ok",
         "llm_configured": bool(os.getenv("GEMINI_API_KEY")),
         "rag_available": RAG_AVAILABLE,
+        "gemini_model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
     }
 
 
