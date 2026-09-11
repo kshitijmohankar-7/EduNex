@@ -25,6 +25,128 @@ function detectRequestedData(message, history = []) {
   };
 }
 
+function isAnnouncementQuestion(message) {
+  return /\b(announcement|announcements|notice|notices|circular|circulars)\b/i.test(String(message || ''));
+}
+
+function indiaDateKey(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+function indiaDisplayDate(value) {
+  if (!value) return 'Date unavailable';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function requestedAnnouncementDate(message) {
+  const text = String(message || '').toLowerCase();
+  const todayKey = indiaDateKey(new Date());
+  if (!todayKey) return null;
+
+  if (/\byesterday\b/.test(text)) {
+    const today = new Date(`${todayKey}T12:00:00+05:30`);
+    today.setDate(today.getDate() - 1);
+    return indiaDateKey(today);
+  }
+
+  if (/\btoday\b/.test(text)) return todayKey;
+  return null;
+}
+
+async function answerAnnouncementQuestion(req, message) {
+  const user = req.user;
+  if (!user || user.role !== 'student') return null;
+
+  const student = await getStudentByUserId(user.id);
+  if (!student) return null;
+
+  const result = await pool.query(
+    `SELECT a.id, a.title, a.body, a.created_at,
+            u.full_name AS posted_by_name, u.role AS posted_by_role
+       FROM announcements a
+       JOIN users u ON u.id = a.posted_by
+      WHERE a.department_id IS NULL
+         OR a.department_id = $1
+      ORDER BY a.created_at DESC, a.id DESC`,
+    [student.department_id]
+  );
+
+  const requestedDate = requestedAnnouncementDate(message);
+  const text = String(message || '').toLowerCase();
+  const asksLatest = /\b(latest|last|recent|newest|most recent)\b/.test(text);
+
+  let matches = requestedDate
+    ? result.rows.filter((item) => indiaDateKey(item.created_at) === requestedDate)
+    : result.rows;
+
+  if (!requestedDate && asksLatest) matches = matches.slice(0, 1);
+
+  if (!matches.length) {
+    if (requestedDate) {
+      const label = /\byesterday\b/.test(text) ? 'yesterday' : 'today';
+      return {
+        reply: `## Announcements\n\nThere were no announcements available for **${label}**.`,
+        used_context: true,
+        used_rag: false,
+        sources: [],
+        model_status: 'database_direct',
+      };
+    }
+
+    return {
+      reply: '## Announcements\n\nThere are no announcements available for you right now.',
+      used_context: true,
+      used_rag: false,
+      sources: [],
+      model_status: 'database_direct',
+    };
+  }
+
+  const heading = requestedDate
+    ? (/\byesterday\b/.test(text) ? "Yesterday's Announcements" : "Today's Announcements")
+    : asksLatest ? 'Latest Announcement' : 'Announcements';
+
+  const lines = [`## ${heading}`, ''];
+  matches.forEach((item, index) => {
+    lines.push(`### ${index + 1}. ${item.title || 'Untitled announcement'}`);
+    lines.push(`**Posted:** ${indiaDisplayDate(item.created_at)}`);
+    if (item.posted_by_name) {
+      lines.push(`**Posted by:** ${item.posted_by_name}${item.posted_by_role ? ` (${item.posted_by_role})` : ''}`);
+    }
+    lines.push('');
+    lines.push(item.body || 'No announcement details were provided.');
+    lines.push('');
+  });
+
+  lines.push('---');
+  lines.push('This answer was read directly from your EduNex announcements and does not use Gemini AI quota.');
+
+  return {
+    reply: lines.join('\n'),
+    used_context: true,
+    used_rag: false,
+    sources: [],
+    model_status: 'database_direct',
+  };
+}
+
 async function buildAuthorizedContext(user, message, history = []) {
   if (user.role !== 'student') return { role: user.role };
 
@@ -236,6 +358,13 @@ async function chat(req, res, next) {
           .slice(-8)
           .map((item) => ({ role: item.role, content: String(item.content || '').slice(0, 2000) }))
       : [];
+
+    // Announcement/notice/circular lookups are deterministic database queries.
+    // Answer them here so they never depend on Gemini availability or quota.
+    if (isAnnouncementQuestion(trimmed)) {
+      const directAnswer = await answerAnnouncementQuestion(req, trimmed);
+      if (directAnswer) return res.json(directAnswer);
+    }
 
     const context = await buildAuthorizedContext(req.user, trimmed, safeHistory);
     const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
