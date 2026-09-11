@@ -8,7 +8,8 @@ context that Node explicitly sends for the authenticated student.
 """
 import json
 import os
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Tuple
 from urllib import error, request as urlrequest
 
 from dotenv import load_dotenv
@@ -59,6 +60,8 @@ class ChatResponse(BaseModel):
     used_context: bool = False
     used_rag: bool = False
     sources: List[Dict[str, Any]] = Field(default_factory=list)
+    model_status: str = "ok"
+    retry_after_seconds: Optional[int] = None
 
 
 class IndexRequest(BaseModel):
@@ -122,6 +125,7 @@ RAG / STUDY MATERIAL RULES:
 - Answer using the retrieved sources and do not invent course-specific facts.
 - If the sources do not contain enough information, explicitly say what is missing.
 - You may explain or simplify the retrieved material, but do not silently replace it with unrelated facts.
+- If the user asks for "each topic", organize the answer topic-by-topic and cover every topic supported by the retrieved material.
 - Mention the relevant source/material title when it helps the student understand where the answer came from.
 """
 
@@ -162,12 +166,20 @@ CURRENT QUESTION:
 """.strip()
 
 
-def call_gemini(prompt: str) -> str | None:
-    """Call Gemini with latency-friendly settings for normal chat and RAG."""
+def _parse_retry_after_seconds(response_body: str) -> Optional[int]:
+    """Extract Google's RetryInfo delay, if present, from a 429 response."""
+    match = re.search(r"retry in\s+(\d+)s", response_body, flags=re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
+    """Call Gemini and return (text, status, retry_after_seconds)."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         print("Gemini request skipped: GEMINI_API_KEY is not configured.")
-        return None
+        return None, "not_configured", None
 
     model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -195,7 +207,7 @@ def call_gemini(prompt: str) -> str | None:
         candidates = data.get("candidates", [])
         if not candidates:
             print(f"Gemini returned no candidates. Response: {json.dumps(data)[:2000]}")
-            return None
+            return None, "empty", None
 
         candidate = candidates[0]
         parts = candidate.get("content", {}).get("parts", [])
@@ -208,20 +220,30 @@ def call_gemini(prompt: str) -> str | None:
                 f"finishReason={candidate.get('finishReason')}, "
                 f"finishMessage={candidate.get('finishMessage')}"
             )
-        return text or None
+            return None, "empty", None
+        return text, "ok", None
     except error.HTTPError as exc:
         try:
             response_body = exc.read().decode("utf-8", errors="replace")
         except Exception:
             response_body = "<unable to read error response>"
+
+        retry_after = _parse_retry_after_seconds(response_body)
+        if exc.code == 429:
+            print(
+                "Gemini quota/rate-limit error (429). "
+                f"Retry after: {retry_after}s. Details: {response_body[:2000]}"
+            )
+            return None, "quota_exhausted", retry_after
+
         print(f"Gemini HTTP error {exc.code}: {response_body[:2000]}")
-        return None
+        return None, "http_error", retry_after
     except (error.URLError, TimeoutError, OSError) as exc:
         print(f"Gemini connection error: {exc}")
-        return None
+        return None, "connection_error", None
     except (ValueError, json.JSONDecodeError) as exc:
         print(f"Gemini response parsing error: {exc}")
-        return None
+        return None, "parse_error", None
 
 
 def educational_fallback(message: str) -> str | None:
@@ -253,6 +275,60 @@ def educational_fallback(message: str) -> str | None:
             "and the large-scale structure of the universe**."
         )
     return None
+
+
+def rag_material_fallback(
+    message: str,
+    rag_chunks: List[Dict[str, Any]],
+    model_status: str,
+    retry_after_seconds: Optional[int],
+) -> str:
+    """Provide useful retrieved study material when generation is unavailable."""
+    source_titles = []
+    seen_titles = set()
+    for item in rag_chunks:
+        title = item.get("title", "Study material")
+        if title not in seen_titles:
+            seen_titles.add(title)
+            source_titles.append(title)
+
+    status_text = (
+        "Gemini generation is temporarily unavailable because the API quota/rate limit has been reached."
+        if model_status == "quota_exhausted"
+        else "Gemini generation is temporarily unavailable."
+    )
+    retry_text = f" You can retry after about {retry_after_seconds} seconds." if retry_after_seconds else ""
+
+    lines = [
+        "## Study Material Retrieval",
+        "",
+        "I successfully found relevant content in your uploaded study material, but I cannot generate the full AI explanation right now.",
+        "",
+        f"**{status_text}**{retry_text}",
+        "",
+        "### Retrieved material",
+    ]
+
+    for index, item in enumerate(rag_chunks, start=1):
+        title = item.get("title", "Study material")
+        chunk_index = item.get("chunk_index", 0)
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        lines.extend([
+            "",
+            f"**{index}. {title} — section {int(chunk_index) + 1}**",
+            text,
+        ])
+
+    if source_titles:
+        lines.extend(["", "### Sources", *[f"- {title}" for title in source_titles]])
+
+    lines.extend([
+        "",
+        "Once Gemini generation is available again, EduNex AI will use these same retrieved sections to produce the complete topic-by-topic explanation.",
+    ])
+    return "\n".join(lines)
 
 
 def is_rag_question(message: str) -> bool:
@@ -313,10 +389,11 @@ def chat(req: ChatRequest):
             ),
             used_context=bool(context),
             used_rag=True,
+            model_status="rag_no_match",
         )
 
     prompt = build_student_prompt(message, context, history, rag_chunks)
-    llm_reply = call_gemini(prompt)
+    llm_reply, model_status, retry_after_seconds = call_gemini(prompt)
     if llm_reply:
         sources = [
             {
@@ -330,15 +407,46 @@ def chat(req: ChatRequest):
             used_context=bool(context),
             used_rag=bool(rag_chunks),
             sources=sources,
+            model_status="ok",
+        )
+
+    # If RAG retrieved material but Gemini cannot generate, never discard the
+    # retrieved evidence. Return it with a clear service-status explanation.
+    if rag_chunks:
+        sources = [
+            {
+                "title": item.get("title", "Study material"),
+                "chunk": item.get("chunk_index", 0),
+                "distance": item.get("distance"),
+            }
+            for item in rag_chunks
+        ]
+        return ChatResponse(
+            reply=rag_material_fallback(message, rag_chunks, model_status, retry_after_seconds),
+            used_context=bool(context),
+            used_rag=True,
+            sources=sources,
+            model_status=model_status,
+            retry_after_seconds=retry_after_seconds,
         )
 
     # Deterministic fallbacks keep dashboard questions useful when Gemini times out.
     lower = message.lower()
     if any(k in lower for k in ["attendance", "present", "absent"]):
-        return ChatResponse(reply=generate_performance_insight(message, context), used_context=True)
+        return ChatResponse(
+            reply=generate_performance_insight(message, context),
+            used_context=True,
+            model_status=model_status,
+            retry_after_seconds=retry_after_seconds,
+        )
 
     if any(k in lower for k in ["mark", "ct1", "ct-1", "ct2", "ct-2", "performance"]):
-        return ChatResponse(reply=generate_performance_insight(message, context), used_context=True)
+        return ChatResponse(
+            reply=generate_performance_insight(message, context),
+            used_context=True,
+            model_status=model_status,
+            retry_after_seconds=retry_after_seconds,
+        )
 
     assignments = context.get("assignments", [])
     if "assignment" in lower and isinstance(assignments, list) and assignments:
@@ -350,18 +458,40 @@ def chat(req: ChatRequest):
                 f"- {item.get('subject', 'Subject')}: {item.get('title', 'Assignment')} — "
                 f"{status}, deadline {deadline}"
             )
-        return ChatResponse(reply="Here are your assignments:\n" + "\n".join(lines), used_context=True)
+        return ChatResponse(
+            reply="Here are your assignments:\n" + "\n".join(lines),
+            used_context=True,
+            model_status=model_status,
+            retry_after_seconds=retry_after_seconds,
+        )
 
     offline_reply = educational_fallback(message)
     if offline_reply:
-        return ChatResponse(reply=offline_reply, used_context=False)
+        return ChatResponse(
+            reply=offline_reply,
+            used_context=False,
+            model_status=model_status,
+            retry_after_seconds=retry_after_seconds,
+        )
+
+    if model_status == "quota_exhausted":
+        retry_text = f" Retry after about {retry_after_seconds} seconds." if retry_after_seconds else ""
+        reply = (
+            "## AI quota reached\n\n"
+            "EduNex reached the current Gemini API quota, so a generated answer is temporarily unavailable."
+            f"{retry_text}\n\n"
+            "Your dashboard data and study materials are safe. Please try again after the quota resets or when your API plan has available generation capacity."
+        )
+    elif model_status == "connection_error":
+        reply = "I couldn't connect to the Gemini AI service right now. Your dashboard data is safe. Please try again shortly."
+    else:
+        reply = "I couldn't generate the AI response right now. Your dashboard data is safe. Please try again shortly."
 
     return ChatResponse(
-        reply=(
-            "I couldn't reach the AI model right now. Your dashboard data is safe. "
-            "Please try the question again in a few seconds."
-        ),
+        reply=reply,
         used_context=bool(context),
+        model_status=model_status,
+        retry_after_seconds=retry_after_seconds,
     )
 
 
