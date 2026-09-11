@@ -8,16 +8,20 @@ function detectRequestedData(message, history = []) {
     .join(' ')
     .toLowerCase();
 
+  const allDashboard = /\b(my dashboard|student dashboard|everything about me|all my details|overall progress|academic progress|my complete data)\b/.test(text);
+  const planning = /\b(study plan|study schedule|how am i doing|where should i focus|which subjects should i focus|what should i improve|what should i study)\b/.test(text);
+
   return {
-    profile: /\b(profile|student id|student code|department|course|semester|division|academic year|email|my details)\b/.test(text),
-    attendance: /\b(attendance|present|absent|classes|75%|shortage)\b/.test(text),
-    marks: /\b(mark|marks|score|scores|grade|grades|ct1|ct-1|ct2|ct-2|internal|external|end sem|end-sem|performance|result)\b/.test(text),
-    assignments: /\b(assignment|assignments|deadline|submission|submitted|pending)\b/.test(text),
-    announcements: /\b(announcement|announcements|notice|notices|circular|circulars)\b/.test(text),
-    materials: /\b(study material|study materials|material|materials|notes|pdf|document|documents|unit)\b/.test(text),
-    achievements: /\b(achievement|achievements|certificate|certificates|award|awards|skills)\b/.test(text),
-    electives: /\b(elective|electives|liberal learning|lll|subject choice|subject selection)\b/.test(text),
-    marksheets: /\b(marksheet|marksheets|sgpa|cgpa|semester result)\b/.test(text),
+    allDashboard,
+    profile: allDashboard || /\b(profile|student id|student code|department|course|semester|division|academic year|email|my details)\b/.test(text),
+    attendance: allDashboard || planning || /\b(attendance|present|absent|classes|75%|shortage)\b/.test(text),
+    marks: allDashboard || planning || /\b(mark|marks|score|scores|grade|grades|ct1|ct-1|ct2|ct-2|internal|external|end sem|end-sem|performance|result)\b/.test(text),
+    assignments: allDashboard || planning || /\b(assignment|assignments|deadline|submission|submitted|pending)\b/.test(text),
+    announcements: allDashboard || /\b(announcement|announcements|notice|notices|circular|circulars)\b/.test(text),
+    materials: allDashboard || /\b(study material|study materials|material|materials|notes|pdf|document|documents|unit)\b/.test(text),
+    achievements: allDashboard || /\b(achievement|achievements|certificate|certificates|award|awards|skills)\b/.test(text),
+    electives: allDashboard || /\b(elective|electives|liberal learning|lll|subject choice|subject selection)\b/.test(text),
+    marksheets: allDashboard || /\b(marksheet|marksheets|sgpa|cgpa|semester result)\b/.test(text),
   };
 }
 
@@ -163,8 +167,7 @@ async function buildAuthorizedContext(user, message, history = []) {
                 s.name AS subject, s.code
          FROM study_materials sm
          JOIN subjects s ON s.id = sm.subject_id
-         ORDER BY s.name, sm.unit, sm.title`,
-        []
+         ORDER BY s.name, sm.unit, sm.title`
       ).then((result) => { context.studyMaterials = result.rows; })
     );
   }
