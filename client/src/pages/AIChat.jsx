@@ -138,6 +138,104 @@ function AssistantMessage({ text, sources = [], usedRag = false }) {
   );
 }
 
+function indiaDateKey(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+function indiaDisplayDate(value) {
+  if (!value) return 'Date unavailable';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function announcementQuestion(message) {
+  const text = String(message || '').toLowerCase();
+  return /\b(announcement|announcements|notice|notices|circular|circulars)\b/.test(text);
+}
+
+function requestedAnnouncementDate(message) {
+  const text = String(message || '').toLowerCase();
+  const now = new Date();
+
+  if (/\byesterday\b/.test(text)) {
+    now.setDate(now.getDate() - 1);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+  }
+
+  if (/\btoday\b/.test(text)) {
+    return indiaDateKey(new Date());
+  }
+
+  return null;
+}
+
+function formatAnnouncementReply(message, announcements) {
+  const rows = Array.isArray(announcements) ? [...announcements] : [];
+  rows.sort((a, b) => {
+    const left = new Date(a.created_at || 0).getTime();
+    const right = new Date(b.created_at || 0).getTime();
+    return right - left;
+  });
+
+  const requestedDate = requestedAnnouncementDate(message);
+  let matches = requestedDate
+    ? rows.filter((item) => indiaDateKey(item.created_at) === requestedDate)
+    : rows;
+
+  const text = String(message || '').toLowerCase();
+  const asksLatest = /\b(latest|last|recent|newest|most recent)\b/.test(text);
+  if (!requestedDate && asksLatest) matches = matches.slice(0, 1);
+
+  if (!matches.length) {
+    if (requestedDate) {
+      const label = /\byesterday\b/.test(text) ? 'yesterday' : 'today';
+      return `## Announcements\n\nThere were no announcements available for **${label}**.`;
+    }
+    return '## Announcements\n\nThere are no announcements available for you right now.';
+  }
+
+  const heading = requestedDate
+    ? (/\byesterday\b/.test(text) ? "Yesterday's Announcements" : "Today's Announcements")
+    : asksLatest ? 'Latest Announcement' : 'Announcements';
+
+  const lines = [`## ${heading}`, ''];
+  matches.forEach((item, index) => {
+    lines.push(`### ${index + 1}. ${item.title || 'Untitled announcement'}`);
+    lines.push(`**Posted:** ${indiaDisplayDate(item.created_at)}`);
+    if (item.posted_by_name) {
+      lines.push(`**Posted by:** ${item.posted_by_name}${item.posted_by_role ? ` (${item.posted_by_role})` : ''}`);
+    }
+    lines.push('');
+    lines.push(item.body || 'No announcement details were provided.');
+    lines.push('');
+  });
+
+  lines.push('---');
+  lines.push('This answer was read directly from your EduNex announcements, so it does not require Gemini AI quota.');
+  return lines.join('\n');
+}
+
 export default function AIChat() {
   const [messages, setMessages] = useState([
     {
@@ -170,6 +268,24 @@ export default function AIChat() {
     setLoading(true);
 
     try {
+      // Questions whose answer is already structured data in EduNex should not
+      // consume Gemini quota. This makes announcement lookups reliable even
+      // when the external AI model is rate-limited.
+      if (announcementQuestion(trimmed)) {
+        const announcements = await api.getAnnouncements();
+        const reply = formatAnnouncementReply(trimmed, announcements);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            text: reply,
+            sources: [],
+            usedRag: false,
+          },
+        ]);
+        return;
+      }
+
       const response = await api.chat(trimmed, history);
       setMessages((prev) => [
         ...prev,
