@@ -71,11 +71,18 @@ function requestedAnnouncementDate(message) {
 }
 
 async function answerAnnouncementQuestion(req, message) {
+  // This function MUST return a response for every announcement question.
+  // It must never return null and therefore must never fall through to Gemini.
   const user = req.user;
-  if (!user || user.role !== 'student') return null;
-
-  const student = await getStudentByUserId(user.id);
-  if (!student) return null;
+  if (!user) {
+    return {
+      reply: '## Announcements\n\nYour session is not authenticated. Please log in again.',
+      used_context: false,
+      used_rag: false,
+      sources: [],
+      model_status: 'database_direct',
+    };
+  }
 
   const result = await pool.query(
     `SELECT a.id, a.title, a.body, a.created_at,
@@ -83,9 +90,14 @@ async function answerAnnouncementQuestion(req, message) {
        FROM announcements a
        JOIN users u ON u.id = a.posted_by
       WHERE a.department_id IS NULL
-         OR a.department_id = $1
+         OR a.department_id = (
+              SELECT s.department_id
+              FROM students s
+              WHERE s.user_id = $1
+              LIMIT 1
+            )
       ORDER BY a.created_at DESC, a.id DESC`,
-    [student.department_id]
+    [user.id]
   );
 
   const requestedDate = requestedAnnouncementDate(message);
@@ -289,7 +301,7 @@ async function buildAuthorizedContext(user, message, history = []) {
          JOIN subjects s ON s.id = sm.subject_id
          ORDER BY s.name, sm.unit, sm.title`
       ).then((result) => { context.studyMaterials = result.rows; })
-    );
+  );
   }
 
   if (requested.achievements) {
@@ -360,10 +372,18 @@ async function chat(req, res, next) {
       : [];
 
     // Announcement/notice/circular lookups are deterministic database queries.
-    // Answer them here so they never depend on Gemini availability or quota.
+    // ALWAYS return the database answer for these questions. Never fall through to Gemini.
     if (isAnnouncementQuestion(trimmed)) {
-      const directAnswer = await answerAnnouncementQuestion(req, trimmed);
-      if (directAnswer) return res.json(directAnswer);
+      try {
+        const directAnswer = await answerAnnouncementQuestion(req, trimmed);
+        return res.json(directAnswer);
+      } catch (announcementError) {
+        console.error('Direct announcement lookup error:', announcementError);
+        return res.status(500).json({
+          error: 'Announcement lookup failed. Gemini was not called.',
+          model_status: 'database_direct_error',
+        });
+      }
     }
 
     const context = await buildAuthorizedContext(req.user, trimmed, safeHistory);
