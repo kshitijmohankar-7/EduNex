@@ -8,13 +8,13 @@ context that Node explicitly sends for the authenticated student.
 """
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List
 from urllib import error, request as urlrequest
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from insights import generate_performance_insight
 
@@ -43,7 +43,8 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     message: str
-    context: Dict[str, Any] = {}
+    history: List[Dict[str, str]] = Field(default_factory=list)
+    context: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ChatResponse(BaseModel):
@@ -51,35 +52,69 @@ class ChatResponse(BaseModel):
     used_context: bool = False
 
 
-def build_student_prompt(message: str, context: Dict[str, Any]) -> str:
-    """Create a strict grounding prompt from the data authorized by Node."""
-    marks = context.get("marks", [])
-    attendance = context.get("attendance", [])
-    assignments = context.get("assignments", [])
+def build_student_prompt(
+    message: str,
+    context: Dict[str, Any],
+    history: List[Dict[str, str]],
+) -> str:
+    """Build a compact, strongly grounded prompt from authorized data."""
+    sections = []
+
+    section_map = [
+        ("PROFILE", "profile"),
+        ("ATTENDANCE", "attendance"),
+        ("PUBLISHED MARKS", "marks"),
+        ("ASSIGNMENTS", "assignments"),
+        ("ANNOUNCEMENTS", "announcements"),
+        ("STUDY MATERIALS", "studyMaterials"),
+        ("ACHIEVEMENTS", "achievements"),
+        ("ELECTIVE CHOICE", "electiveChoice"),
+        ("MARKSHEETS", "marksheets"),
+    ]
+
+    for title, key in section_map:
+        if key in context:
+            sections.append(f"{title}:\n{json.dumps(context[key], default=str, indent=2)}")
+
+    dashboard_context = "\n\n".join(sections) or "No student dashboard data was needed for this question."
+
+    conversation = "\n".join(
+        f"{item.get('role', 'user').upper()}: {item.get('content', '')}"
+        for item in history[-8:]
+    )
 
     return f"""
-You are EduNex AI, a helpful academic assistant for a college student.
+You are EduNex AI, the student's personal academic assistant.
 
-Rules:
-1. Answer clearly and simply.
-2. Use the student's supplied academic data when the question is about the student.
-3. Never invent marks, attendance, assignments, deadlines, subjects, or college-specific facts.
-4. If the supplied data does not contain the answer, say that the information is not available.
-5. For study questions, explain concepts step-by-step at a beginner-friendly level.
-6. Do not claim to have access to data that is not included below.
-7. When useful, give a short actionable recommendation.
+Answer the CURRENT QUESTION directly. Be complete enough to fully answer it,
+but avoid unnecessary filler.
 
-Student academic context:
-MARKS:
-{json.dumps(marks, default=str, indent=2)}
+IMPORTANT RULES:
+1. For educational/concept questions, give a complete beginner-friendly explanation.
+   Do not stop after the definition. Include the key idea, how it works, common
+   types or components when relevant, a simple example, and practical use when useful.
+2. Never intentionally truncate an explanation. Finish the answer and conclusion.
+3. For student-data questions, use ONLY the supplied dashboard data. Never invent data.
+4. For attendance, list EVERY subject supplied in ATTENDANCE, with present/total
+   and percentage. Also state the overall percentage when available. Do not omit rows.
+5. For marks, list all relevant supplied marks and clearly identify exam type and subject.
+6. For assignments, include all relevant assignments and their submission status/deadline.
+7. For announcements, use the supplied announcements. If asked to summarize an
+   announcement, identify the relevant announcement and give a short, accurate summary.
+8. For follow-up questions such as "that announcement" or "explain the second one",
+   use the conversation history together with the supplied dashboard data.
+9. If the requested student information is not supplied, say it is not available.
+10. Do not claim access to private data outside the supplied dashboard context.
+11. Use simple language suitable for a college student.
+12. You may use Markdown headings, bullets, bold text, and short code examples.
 
-ATTENDANCE:
-{json.dumps(attendance, default=str, indent=2)}
+RECENT CONVERSATION:
+{conversation or "No previous conversation."}
 
-ASSIGNMENTS:
-{json.dumps(assignments, default=str, indent=2)}
+AUTHORIZED STUDENT DASHBOARD DATA:
+{dashboard_context}
 
-Student question:
+CURRENT QUESTION:
 {message}
 """.strip()
 
@@ -105,8 +140,8 @@ def call_gemini(prompt: str) -> str | None:
             }
         ],
         "generationConfig": {
-            "temperature": 0.3,
-            "maxOutputTokens": 800,
+            "temperature": 0.25,
+            "maxOutputTokens": 1400,
         },
     }
 
@@ -122,7 +157,7 @@ def call_gemini(prompt: str) -> str | None:
     )
 
     try:
-        with urlrequest.urlopen(req, timeout=45) as response:
+        with urlrequest.urlopen(req, timeout=30) as response:
             data = json.loads(response.read().decode("utf-8"))
 
         candidates = data.get("candidates", [])
@@ -164,58 +199,52 @@ def health():
 def chat(req: ChatRequest):
     message = req.message.strip()
     context = req.context
+    history = req.history[-8:]
 
-    # Student questions are answered by the real LLM when configured,
-    # with only the authorized context supplied by Node.
-    if context.get("role") == "student":
-        llm_reply = call_gemini(build_student_prompt(message, context))
-        if llm_reply:
-            return ChatResponse(reply=llm_reply, used_context=True)
+    if not message:
+        return ChatResponse(reply="Please enter a question.", used_context=bool(context))
 
-        # Safe fallback when no LLM key is configured or the provider is unavailable.
-        lower = message.lower()
-        if any(k in lower for k in ["attendance", "present", "absent"]):
-            return ChatResponse(
-                reply=generate_performance_insight(message, context),
-                used_context=True,
+    # Use the LLM for both student-data questions and normal study questions.
+    # Node has already limited the context to data the authenticated student may see.
+    llm_reply = call_gemini(build_student_prompt(message, context, history))
+    if llm_reply:
+        return ChatResponse(reply=llm_reply, used_context=bool(context))
+
+    # Safe fallback when no LLM key is configured or the provider is unavailable.
+    lower = message.lower()
+    if any(k in lower for k in ["attendance", "present", "absent"]):
+        return ChatResponse(
+            reply=generate_performance_insight(message, context),
+            used_context=True,
+        )
+
+    if any(k in lower for k in ["mark", "ct1", "ct-1", "ct2", "ct-2", "performance"]):
+        return ChatResponse(
+            reply=generate_performance_insight(message, context),
+            used_context=True,
+        )
+
+    assignments = context.get("assignments", [])
+    if "assignment" in lower and assignments:
+        lines = []
+        for item in assignments:
+            status = item.get("submission_status", "not_submitted")
+            deadline = item.get("deadline") or "no deadline"
+            lines.append(
+                f"{item.get('subject', 'Subject')}: {item.get('title', 'Assignment')} — {status}, deadline {deadline}"
             )
+        return ChatResponse(
+            reply="Here are your assignments:\n" + "\n".join(lines),
+            used_context=True,
+        )
 
-        if any(k in lower for k in ["mark", "ct1", "ct-1", "ct2", "ct-2", "performance"]):
-            return ChatResponse(
-                reply=generate_performance_insight(message, context),
-                used_context=True,
-            )
-
-        assignments = context.get("assignments", [])
-        if "assignment" in lower and assignments:
-            lines = []
-            for item in assignments:
-                status = item.get("submission_status", "not_submitted")
-                deadline = item.get("deadline") or "no deadline"
-                lines.append(
-                    f"{item.get('subject', 'Subject')}: {item.get('title', 'Assignment')} — {status}, deadline {deadline}"
-                )
-            return ChatResponse(
-                reply="Here are your assignments:\n" + "\n".join(lines),
-                used_context=True,
-            )
-
-    # Study-material RAG fallback is optional because Chroma/hnswlib is a
-    # native dependency that may not have a Windows wheel for every Python version.
-    if any(k in message.lower() for k in ["explain", "summarize", "notes", "unit", "pdf"]):
+    if any(k in lower for k in ["explain", "summarize", "notes", "unit", "pdf"]):
         if RAG_AVAILABLE and answer_from_materials is not None:
             reply = answer_from_materials(message)
             return ChatResponse(reply=reply, used_context=True)
-        return ChatResponse(
-            reply="Study-material RAG is not available on this installation yet. The Gemini student assistant is still available for general study questions.",
-            used_context=bool(context),
-        )
 
     return ChatResponse(
-        reply=(
-            "EduNex AI is ready. Ask me about your attendance, published marks, "
-            "assignments, study materials, or a topic you want to learn."
-        ),
+        reply="I could not generate a complete AI response right now. Please try again.",
         used_context=bool(context),
     )
 
