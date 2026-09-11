@@ -1,5 +1,3 @@
-import Announcements from '../components/Announcements';
-
 export default function AdminOverview() {
   return (
     <div>
@@ -19,8 +17,6 @@ export default function AdminOverview() {
         <div className="stat-card"><div className="stat-label">Students</div><div className="stat-value">2,140</div></div>
         <div className="stat-card"><div className="stat-label">Active courses</div><div className="stat-value">12</div></div>
       </div>
-
-      <Announcements />
 
       <div className="panel">
         <div className="ledger-heading"><h2>System Management</h2></div>
