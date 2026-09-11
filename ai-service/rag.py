@@ -1,70 +1,236 @@
 """
-Retrieval-Augmented Generation over uploaded study materials.
+EduNex Retrieval-Augmented Generation (RAG) engine.
 
-Flow: PDF/notes -> text extraction -> chunking -> embeddings -> vector DB
-      -> student question -> similarity search -> relevant chunks -> LLM -> answer
+Pipeline:
+  uploaded PDF/DOC/DOCX -> text extraction -> chunking -> Gemini embeddings
+  -> Chroma persistent vector store -> semantic retrieval -> Gemini answer
 
-Uses Chroma as a lightweight local vector store and sentence-transformers
-for embeddings so this runs without any external API keys out of the box.
-Swap `embed()` for an API-based embedding model in production if preferred.
+The vector store contains course-material chunks only. Student dashboard
+authorization remains in the Node backend.
 """
-from typing import List
+
+from __future__ import annotations
+
+import hashlib
+import os
+import re
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import chromadb
-from sentence_transformers import SentenceTransformer
+from docx import Document
+from google import genai
+from google.genai import types
+from pypdf import PdfReader
 
-_client = chromadb.PersistentClient(path="./chroma_store")
-_collection = _client.get_or_create_collection("study_materials")
-_embedder = SentenceTransformer("all-MiniLM-L6-v2")
+
+CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_store")
+COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "study_materials")
+EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
+EMBEDDING_DIMENSIONS = int(os.getenv("GEMINI_EMBEDDING_DIMENSIONS", "768"))
+
+_client = chromadb.PersistentClient(path=CHROMA_PATH)
+_collection = _client.get_or_create_collection(
+    name=COLLECTION_NAME,
+    metadata={"hnsw:space": "cosine"},
+)
 
 
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
-    words = text.split()
-    chunks = []
+def _gemini_client():
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
+    return genai.Client(api_key=api_key)
+
+
+def chunk_text(text: str, chunk_size: int = 700, overlap: int = 100) -> List[str]:
+    """Split material into overlapping word chunks while cleaning noisy whitespace."""
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if not cleaned:
+        return []
+
+    words = cleaned.split(" ")
+    chunks: List[str] = []
     start = 0
+    step = max(1, chunk_size - overlap)
+
     while start < len(words):
-        end = start + chunk_size
-        chunks.append(" ".join(words[start:end]))
-        start = end - overlap
+        chunk = " ".join(words[start : start + chunk_size]).strip()
+        if chunk:
+            chunks.append(chunk)
+        start += step
+
     return chunks
 
 
+def _embed_documents(texts: List[str]) -> List[List[float]]:
+    """Create retrieval-document embeddings in batches using Gemini Embeddings."""
+    if not texts:
+        return []
+
+    client = _gemini_client()
+    embeddings: List[List[float]] = []
+
+    # Gemini supports multiple text inputs in one embedding request. Keep the
+    # batch moderate so a large upload does not create an oversized request.
+    for start in range(0, len(texts), 50):
+        batch = texts[start : start + 50]
+        result = client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=batch,
+            config=types.EmbedContentConfig(
+                task_type="RETRIEVAL_DOCUMENT",
+                output_dimensionality=EMBEDDING_DIMENSIONS,
+            ),
+        )
+        embeddings.extend([list(item.values) for item in result.embeddings])
+
+    return embeddings
+
+
+def _embed_query(question: str) -> List[float]:
+    client = _gemini_client()
+    result = client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=[question],
+        config=types.EmbedContentConfig(
+            task_type="RETRIEVAL_QUERY",
+            output_dimensionality=EMBEDDING_DIMENSIONS,
+        ),
+    )
+    return list(result.embeddings[0].values)
+
+
+def _document_key(subject_id: int, title: str) -> str:
+    raw = f"{subject_id}:{title}".encode("utf-8")
+    return hashlib.sha1(raw).hexdigest()[:20]
+
+
 def index_document(subject_id: int, title: str, text: str) -> int:
-    """Chunks a document, embeds each chunk, and stores it in the vector DB."""
+    """Replace an existing material in Chroma and index its chunks."""
     chunks = chunk_text(text)
     if not chunks:
         return 0
 
-    embeddings = _embedder.encode(chunks).tolist()
-    ids = [f"{subject_id}-{title}-{i}" for i in range(len(chunks))]
-    metadatas = [{"subject_id": subject_id, "title": title, "chunk_index": i} for i in range(len(chunks))]
+    document_key = _document_key(subject_id, title)
 
-    _collection.add(ids=ids, embeddings=embeddings, documents=chunks, metadatas=metadatas)
+    # Re-indexing the same title should replace old chunks rather than create
+    # duplicate retrieval results after a faculty member updates a material.
+    existing = _collection.get(where={"document_key": document_key}, include=[])
+    existing_ids = existing.get("ids", []) if existing else []
+    if existing_ids:
+        _collection.delete(ids=existing_ids)
+
+    embeddings = _embed_documents(chunks)
+    ids = [f"{document_key}-{i}" for i in range(len(chunks))]
+    metadatas = [
+        {
+            "subject_id": int(subject_id),
+            "title": title,
+            "document_key": document_key,
+            "chunk_index": i,
+        }
+        for i in range(len(chunks))
+    ]
+
+    _collection.add(
+        ids=ids,
+        embeddings=embeddings,
+        documents=chunks,
+        metadatas=metadatas,
+    )
     return len(chunks)
 
 
-def answer_from_materials(question: str, subject_id: int = None, top_k: int = 4) -> str:
-    """
-    Retrieves the most relevant chunks for a question and (in production)
-    passes them to an LLM to generate a grounded answer.
+def extract_text_from_file(file_path: str) -> str:
+    """Extract text from PDF, DOCX, or plain text files."""
+    path = Path(file_path)
+    suffix = path.suffix.lower()
 
-    IMPORTANT: if no relevant material is found, this must say so rather
-    than letting the LLM improvise an answer that sounds authoritative
-    but isn't grounded in real course content.
-    """
-    query_embedding = _embedder.encode([question]).tolist()[0]
+    if not path.exists():
+        raise FileNotFoundError(f"Study material file not found: {file_path}")
 
-    where = {"subject_id": subject_id} if subject_id is not None else None
-    results = _collection.query(query_embeddings=[query_embedding], n_results=top_k, where=where)
+    if suffix == ".pdf":
+        reader = PdfReader(str(path))
+        pages = []
+        for page in reader.pages:
+            pages.append(page.extract_text() or "")
+        return "\n\n".join(pages).strip()
+
+    if suffix == ".docx":
+        document = Document(str(path))
+        paragraphs = [p.text for p in document.paragraphs if p.text.strip()]
+        return "\n\n".join(paragraphs).strip()
+
+    if suffix == ".doc":
+        raise ValueError("Legacy .doc files are not supported for automatic text extraction. Convert it to .docx or PDF.")
+
+    return path.read_text(encoding="utf-8", errors="ignore").strip()
+
+
+def index_file(subject_id: int, title: str, file_path: str) -> int:
+    """Extract and index an uploaded study-material file."""
+    text = extract_text_from_file(file_path)
+    return index_document(subject_id, title, text)
+
+
+def retrieve_materials(
+    question: str,
+    subject_id: Optional[int] = None,
+    top_k: int = 6,
+) -> List[Dict[str, Any]]:
+    """Return the most relevant study-material chunks for a question."""
+    if _collection.count() == 0:
+        return []
+
+    query_embedding = _embed_query(question)
+    where = {"subject_id": int(subject_id)} if subject_id is not None else None
+
+    results = _collection.query(
+        query_embeddings=[query_embedding],
+        n_results=max(1, min(top_k, 10)),
+        where=where,
+        include=["documents", "metadatas", "distances"],
+    )
 
     documents = results.get("documents", [[]])[0]
-    if not documents:
-        return "I couldn't find that in your available study materials. Ask your instructor to confirm it's been uploaded, or try rephrasing your question."
+    metadatas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
 
-    # --- LLM integration point ---
-    # context = "\n\n".join(documents)
-    # prompt = f"Using ONLY the context below, answer the question. If the answer isn't in the context, say so.\n\nContext:\n{context}\n\nQuestion: {question}"
-    # response = call_llm(prompt)
-    # return response
+    retrieved: List[Dict[str, Any]] = []
+    for index, document in enumerate(documents):
+        metadata = metadatas[index] if index < len(metadatas) else {}
+        distance = distances[index] if index < len(distances) else None
+        retrieved.append(
+            {
+                "text": document,
+                "title": metadata.get("title", "Study material"),
+                "subject_id": metadata.get("subject_id"),
+                "chunk_index": metadata.get("chunk_index", 0),
+                "distance": distance,
+            }
+        )
 
-    combined = " ".join(documents)[:600]
-    return f"Based on your uploaded materials: {combined}..."
+    return retrieved
+
+
+def answer_from_materials(question: str, subject_id: int = None, top_k: int = 6) -> str:
+    """Compatibility helper returning retrieved text as a grounded context block."""
+    chunks = retrieve_materials(question, subject_id=subject_id, top_k=top_k)
+    if not chunks:
+        return ""
+
+    return "\n\n".join(
+        f"[Source: {item['title']}]\n{item['text']}"
+        for item in chunks
+    )
+
+
+def collection_stats() -> Dict[str, Any]:
+    return {
+        "collection": COLLECTION_NAME,
+        "chunks": _collection.count(),
+        "embedding_model": EMBEDDING_MODEL,
+        "embedding_dimensions": EMBEDDING_DIMENSIONS,
+        "chroma_path": CHROMA_PATH,
+    }
