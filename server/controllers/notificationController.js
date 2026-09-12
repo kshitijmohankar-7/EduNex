@@ -14,7 +14,7 @@ async function syncNotifications(userId){
     for(const a of assignments.rows)rows.push({type:'assignment',title:`New assignment: ${a.title}`,message:`${a.subject} assignment is available. Deadline: ${a.deadline||'not specified'}.`,link:'/assignments',sourceType:'assignment',sourceId:a.id,createdAt:a.issue_date});
   }
   if(user.role==='faculty'){
-    const submissions=await pool.query(`SELECT ass.id,ass.assignment_id,ass.submitted_at,a.title,u.full_name AS student_name FROM assignment_submissions ass JOIN assignments a ON a.id=ass.assignment_id JOIN students st ON st.id=ass.student_id JOIN users u ON u.id=st.user_id WHERE a.uploaded_by=$1 ORDER BY ass.submitted_at DESC LIMIT 30`,[user.faculty_id]);
+    const submissions=await pool.query(`SELECT ass.id,ass.assignment_id,ass.submitted_at,a.title,u.full_name AS student_name FROM assignment_submissions ass JOIN assignments a ON a.id=ass.assignment_id JOIN students st ON st.id=ass.student_id JOIN users u ON u.id=st.user_id JOIN faculty_subject_assignments fsa ON fsa.subject_id=a.subject_id AND fsa.faculty_id=$1 ORDER BY ass.submitted_at DESC LIMIT 30`,[user.faculty_id]);
     for(const s of submissions.rows)rows.push({type:'submission',title:`Assignment submitted: ${s.title}`,message:`${s.student_name||'A student'} submitted an assignment for your review.`,link:`/faculty/assignments/${s.assignment_id}/submissions`,sourceType:'submission',sourceId:s.id,createdAt:s.submitted_at});
   }
   for(const n of rows){await pool.query(`INSERT INTO notifications(user_id,type,title,message,link,source_type,source_id,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,[userId,n.type,n.title,n.message,n.link,n.sourceType,n.sourceId,n.createdAt||new Date()])}
