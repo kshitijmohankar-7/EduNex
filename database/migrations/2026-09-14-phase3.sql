@@ -4,6 +4,7 @@ CREATE INDEX IF NOT EXISTS idx_fsa_faculty_subject ON faculty_subject_assignment
 CREATE INDEX IF NOT EXISTS idx_fsa_subject_faculty ON faculty_subject_assignments(subject_id, faculty_id);
 CREATE INDEX IF NOT EXISTS idx_student_subjects_student_status ON student_subjects(student_id, status, subject_id);
 CREATE INDEX IF NOT EXISTS idx_student_subjects_subject_status ON student_subjects(subject_id, status, student_id);
+CREATE INDEX IF NOT EXISTS idx_subject_choices_student_status ON subject_choices(student_id, status, open_elective_subject_id, lll_subject_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_uploaded_by ON assignments(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_assignment_submissions_assignment_status ON assignment_submissions(assignment_id, status, submitted_at DESC);
 CREATE INDEX IF NOT EXISTS idx_marks_student_published ON marks(student_id, published, subject_id, created_at DESC);
