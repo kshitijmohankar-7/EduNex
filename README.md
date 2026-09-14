@@ -1,91 +1,163 @@
 # EduNex — AI-Powered College Management & Student Success Platform
 
-A starter, working scaffold for the EduNex platform: student/faculty/admin portals,
-a Node/Express + PostgreSQL REST API, and a Python/FastAPI AI microservice with a
-RAG pipeline over study materials.
+EduNex is a full-stack college management and student-success platform for **students, faculty and administrators**, combining PostgreSQL-backed academic workflows with a Gemini/RAG AI assistant.
 
-This is a **functional foundation**, not the finished product — every module described
-in the original brief has a real file and a working code path, but content upload
-handling (multer/S3), the admin CRUD screens, and the LLM API call itself are left as
-clearly marked integration points so you can plug in your own credentials and storage.
+## Stack
 
-## What's included
+- **Frontend:** React 18 + Vite
+- **Backend:** Node.js + Express
+- **Database:** PostgreSQL 18
+- **AI service:** Python + FastAPI
+- **AI:** Gemini + Chroma RAG over study materials
+- **Uploads:** local filesystem with legacy-path compatibility
 
-```
-edunex/
-├── client/         React 18 + Vite frontend (student/faculty/admin dashboards, AI chat)
-├── server/         Express REST API (auth, students, faculty, materials, attendance, marks)
-├── database/       PostgreSQL schema.sql + seed.sql
-├── ai-service/     FastAPI service: chat routing, RAG over materials, performance insights
-└── uploads/        Local file storage for notes/assignments/question banks/certificates
-```
+## Implemented phases
+
+### Phase 1 — Core academic management
+
+- Admin-only student/faculty account creation
+- Department, course, semester, division and subject CRUD
+- Faculty-to-subject assignment authorization
+- Attendance management
+- CT1, CT2, Internal, External and End-Semester marks
+- Explicit mark publishing
+- SGPA/CGPA calculation
+- Marksheet upload/publishing
+- Assignments, submissions, approval/rejection and grading/feedback
+- Question-bank upload and student access
+- Achievements/certificates
+- Announcements
+- Role-based navigation and protected APIs
+
+### Phase 2 — AI + student success
+
+- Database-direct AI lookups for common academic questions
+- Gemini/RAG fallback for conceptual questions
+- RAG source cards in AI Chat
+- Chroma indexing dashboard with re-index support
+- Automatic study-material indexing
+- Student/faculty/admin notifications
+- AI Academic Insights
+- Attendance/performance/assignment recommendations
+
+### Phase 3 — Analytics + reliability
+
+- Student Analytics dashboard
+- Faculty Analytics dashboard
+- Admin Analytics and recent audit dashboard
+- Performance/data-integrity indexes
+- Elective-aware analytics and academic calculations
+- Legacy upload-path normalization
+- Assignment submission file compatibility
+- Faculty subject authorization hardening
+- Approved elective visibility in marks, assignments, materials and question banks
+- Defensive analytics rendering so empty datasets do not crash the UI
 
 ## Quick start
 
 ### 1. Database
-```bash
-createdb edunex
-psql edunex < database/schema.sql
-psql edunex < database/seed.sql   # optional demo data
+
+Run the base schema/seed only for a new installation. For an existing EduNex installation, run the migrations in order that have not already been applied.
+
+**Phase 1:**
+```powershell
+psql -U postgres -d edunex -f database\migrations\2026-09-11-phase1-admin-questionbank-grading.sql
 ```
 
-### 2. Backend API
-```bash
+**Phase 2:**
+```powershell
+psql -U postgres -d edunex -f database\migrations\2026-09-12-phase2.sql
+```
+
+**Phase 3:**
+```powershell
+psql -U postgres -d edunex -f database\migrations\2026-09-14-phase3.sql
+```
+
+If PostgreSQL is not on PATH on Windows:
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d edunex -f database\migrations\2026-09-14-phase3.sql
+```
+
+### 2. Backend
+
+```powershell
 cd server
-cp .env.example .env      # fill in DATABASE_URL and JWT_SECRET
 npm install
-npm run dev                # http://localhost:5000
+npm run dev
+```
+
+API: `http://localhost:5000`
+
+Health check:
+```text
+GET /api/health
 ```
 
 ### 3. AI service
-```bash
+
+```powershell
 cd ai-service
-python -m venv venv && source venv/bin/activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+python -m uvicorn main:app --reload --port 8000
 ```
+
+AI service: `http://localhost:8000`
 
 ### 4. Frontend
-```bash
+
+```powershell
 cd client
-cp .env.example .env
 npm install
-npm run dev                # http://localhost:5173
+npm run dev
 ```
 
-The frontend currently runs against **mock data** (`client/src/mock/mockData.js`) so
-you can explore every screen immediately with `npm run dev` alone — no backend
-required. Login accepts any password in demo mode; switch roles with the toggle
-on the login screen. Once your API is running, swap the calls in `AuthContext.jsx`
-and the page components for the real `services/api.js` methods.
+Frontend: `http://localhost:5173`
 
-## Wiring up the LLM
+## AI/RAG
 
-`ai-service/main.py` and `ai-service/rag.py` mark the exact spot to add a real LLM
-call (`call_llm(prompt)`), e.g. via the Anthropic API. The RAG pipeline (chunking →
-embeddings → Chroma vector store → retrieval) already runs locally with
-`sentence-transformers`, so you only need to add the generation step.
+The AI service supports:
+
+1. PDF/DOCX study-material extraction
+2. Chunking and Gemini embeddings
+3. Persistent Chroma vector storage
+4. Retrieved-source context for grounded responses
+5. Database-direct answers for common academic queries
+6. Re-indexing and indexing diagnostics
+
+Common dashboard path:
+
+**Faculty → Menu → RAG Indexing**
+
+## File handling
+
+EduNex stores uploaded files under:
+
+```text
+uploads/
+├── assignments/
+├── assignment-submissions/
+├── study-material/
+├── question-banks/
+├── marksheets/
+└── achievements/
+```
+
+The API normalizes older absolute Windows paths such as `D:/.../uploads/...` before returning public URLs, so previously uploaded files do not need to be re-uploaded.
 
 ## Security model
 
-- JWT auth (`server/middleware/auth.js`) + role-based authorization
-  (`server/middleware/roleCheck.js`) gate every route.
-- Students can only ever read their **own** row, resolved server-side from the JWT —
-  there's no student ID parameter a client could tamper with.
-- Faculty writes (attendance, marks, materials) are checked against
-  `faculty_subject_assignments` before anything is saved — a faculty member can't
-  touch a subject they aren't assigned to.
-- Marks are entered as **unpublished drafts** and only become visible to students
-  after an explicit `POST /api/faculty/marks/publish` call.
-- The AI service never queries the database directly — `server/controllers/aiController.js`
-  builds an "authorized context" object scoped to the requesting user and forwards
-  only that, so the AI can't leak another student's data even if asked to.
+- JWT authentication and role-based authorization protect APIs.
+- Students can only access their own academic records.
+- Faculty writes are restricted to assigned subjects.
+- Faculty assignment/submission/material/question-bank access is scoped to ownership or assigned subjects.
+- Approved Open Electives and Liberal Learning subjects are included wherever student academic access is required.
+- Marks remain unpublished until explicitly published; editing an already published mark does not silently unpublish it.
+- AI requests receive authorized user context rather than unrestricted database access.
 
-## Next steps to reach a production-ready build
+## Current status
 
-1. Add the admin CRUD routes/controllers (departments, courses, faculty assignment).
-2. Add file upload handling with `multer` + real storage (S3/Cloudinary) instead of local `uploads/`.
-3. Add a `POST /api/students/achievements/:id/certificate` upload flow.
-4. Add automated marksheet/SGPA calculation (trigger or scheduled job) once end-sem marks are published.
-5. Add tests (Jest/Supertest for the API, Vitest for the client).
-6. Replace `AuthContext`'s demo login with real `api.login()` + token storage.
+EduNex is now beyond the initial scaffold: **Phase 1, Phase 2 and Phase 3 feature work is implemented on `main`**, with additional reliability/security fixes for the regressions found during end-to-end testing.
+
+Before testing after a pull, restart the backend and frontend so Vite/Node are not serving stale source files.
