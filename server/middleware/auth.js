@@ -1,20 +1,3 @@
-const jwt = require('jsonwebtoken');
-
-// Verifies the JWT and attaches { id, role, email } to req.user
-function authenticate(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
-  }
-
-  const token = header.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
-}
-
-module.exports = authenticate;
+const jwt=require('jsonwebtoken');const pool=require('../config/db');
+async function authenticate(req,res,next){const header=req.headers.authorization;if(!header||!header.startsWith('Bearer '))return res.status(401).json({error:'Missing or invalid Authorization header'});const token=header.slice(7).trim();if(!token)return res.status(401).json({error:'Missing or invalid Authorization header'});try{const decoded=jwt.verify(token,process.env.JWT_SECRET);const r=await pool.query('SELECT id,email,role,is_active FROM users WHERE id=$1',[decoded.id]);const user=r.rows[0];if(!user||!user.is_active)return res.status(401).json({error:'Account is inactive or no longer exists'});if(user.role!==decoded.role)return res.status(401).json({error:'Session role is no longer valid'});req.user={id:user.id,email:user.email,role:user.role};next()}catch(err){return res.status(401).json({error:'Invalid or expired token'})}}
+module.exports=authenticate;
