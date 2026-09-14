@@ -13,13 +13,15 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_source
-  ON notifications(user_id, source_type, source_id)
-  WHERE source_type IS NOT NULL AND source_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_notifications_user_created
-  ON notifications(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_notifications_unread
-  ON notifications(user_id, read_at) WHERE read_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_source ON notifications(user_id,source_type,source_id) WHERE source_type IS NOT NULL AND source_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id,read_at) WHERE read_at IS NULL;
+
+DO $$ BEGIN
+  IF to_regclass('public.study_materials') IS NULL AND to_regclass('public.materials') IS NOT NULL THEN
+    ALTER TABLE materials RENAME TO study_materials;
+  END IF;
+END $$;
 
 ALTER TABLE study_materials
   ADD COLUMN IF NOT EXISTS rag_status VARCHAR(20) NOT NULL DEFAULT 'pending',
