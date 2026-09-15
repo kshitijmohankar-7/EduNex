@@ -53,11 +53,23 @@ EduNex is a full-stack college management and student-success platform for **stu
 - Approved elective visibility in marks, assignments, materials and question banks
 - Defensive analytics rendering so empty datasets do not crash the UI
 
+### Campus OS expansion — Planner + Timetable
+
+- Role-aware **Campus Planner** for students and faculty
+- Admin **Timetable Manager** with semester, division, subject and faculty selection
+- Monday–Saturday weekly timetable view
+- Current-day highlighting and next-class focus card
+- Room and class-type support: Lecture, Lab, Tutorial, Practical, Seminar
+- Assignment deadline radar beside the timetable
+- Announcement noticeboard beside the timetable
+- Responsive premium visual system with mobile support
+- Secure timetable API: students/faculty read only their relevant schedule; admins manage entries
+
 ## Quick start
 
 ### 1. Database
 
-Run the base schema/seed only for a new installation. For an existing EduNex installation, run the migrations in order that have not already been applied.
+Run the base schema/seed only for a new installation. For an existing EduNex installation, run migrations in order that have not already been applied.
 
 **Phase 1:**
 ```powershell
@@ -74,9 +86,14 @@ psql -U postgres -d edunex -f database\migrations\2026-09-12-phase2.sql
 psql -U postgres -d edunex -f database\migrations\2026-09-14-phase3.sql
 ```
 
+**Campus Planner / Timetable:**
+```powershell
+psql -U postgres -d edunex -f database\migrations\2026-09-15-campus-planner.sql
+```
+
 If PostgreSQL is not on PATH on Windows:
 ```powershell
-& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d edunex -f database\migrations\2026-09-14-phase3.sql
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d edunex -f database\migrations\2026-09-15-campus-planner.sql
 ```
 
 ### 2. Backend
@@ -155,9 +172,10 @@ The API normalizes older absolute Windows paths such as `D:/.../uploads/...` bef
 - Approved Open Electives and Liberal Learning subjects are included wherever student academic access is required.
 - Marks remain unpublished until explicitly published; editing an already published mark does not silently unpublish it.
 - AI requests receive authorized user context rather than unrestricted database access.
+- Timetable management is admin-only; student and faculty schedule reads are role-scoped.
 
 ## Current status
 
-EduNex is now beyond the initial scaffold: **Phase 1, Phase 2 and Phase 3 feature work is implemented on `main`**, with additional reliability/security fixes for the regressions found during end-to-end testing.
+EduNex is now beyond the initial scaffold: **Phase 1, Phase 2 and Phase 3 feature work is implemented on `main`**, with additional reliability/security fixes and a new Campus OS planner/timetable module.
 
 Before testing after a pull, restart the backend and frontend so Vite/Node are not serving stale source files.
