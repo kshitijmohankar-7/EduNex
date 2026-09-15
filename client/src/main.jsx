@@ -7,6 +7,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import './index.css';
 import './styles/modern.css';
 import './styles/immersive-shell.css';
+import './styles/feature-menu.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
