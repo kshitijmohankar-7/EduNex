@@ -9,6 +9,7 @@ import './styles/modern.css';
 import './styles/immersive-shell.css';
 import './styles/feature-menu.css';
 import './styles/menu-only-shell.css';
+import './styles/leave.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
