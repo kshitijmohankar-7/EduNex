@@ -45,23 +45,26 @@ export default function AppShell() {
       {open && <button className="sidebar-overlay" type="button" aria-label="Close menu" onClick={() => setOpen(false)} />}
       <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
         <div className="sidebar-brand">
-          <div className="brand-mark">E</div>
-          <div><div className="brand">EduNex</div><div className="brand-tag">Learn • Manage • Grow</div></div>
+          <div className="brand-mark"><span>E</span><i /></div>
+          <div className="brand-copy"><div className="brand">EduNex</div><div className="brand-tag">Learn • Manage • Grow</div></div>
         </div>
-        <div className="nav-section-label">Workspace</div>
-        <nav><ul className="nav-list">{items.map((item) => <li key={item.to}><NavLink to={item.to} onClick={() => setOpen(false)} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}><span className="nav-icon">{item.icon}</span><span>{item.label}</span></NavLink></li>)}</ul></nav>
+        <div className="sidebar-portal"><span className="portal-dot" /> <span>{portal}</span><span className="portal-role">{user.role}</span></div>
+        <div className="nav-section-label"><span>Workspace</span><span className="nav-count">{items.length}</span></div>
+        <div className="sidebar-nav-scroll">
+          <nav aria-label="Main navigation"><ul className="nav-list">{items.map((item) => <li key={item.to}><NavLink to={item.to} onClick={() => setOpen(false)} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}><span className="nav-icon">{item.icon}</span><span className="nav-label">{item.label}</span><span className="nav-arrow">›</span></NavLink></li>)}</ul></nav>
+        </div>
         <div className="sidebar-footer">
-          <div className="sidebar-mini-card"><span className="status-dot" /> <span>EduNex is online</span></div>
-          <button className="signout-button" onClick={() => { logout(); navigate('/login'); setOpen(false); }}>↪ <span>Sign out</span></button>
+          <div className="sidebar-mini-card"><span className="status-dot" /><div><strong>All systems ready</strong><span>EduNex is online</span></div></div>
+          <button className="signout-button" onClick={() => { logout(); navigate('/login'); setOpen(false); }}><span className="signout-icon">↪</span><span>Sign out</span></button>
         </div>
       </aside>
       <div className="main-area">
         <header className="topbar">
-          <div className="topbar-left"><button className="menu-button" type="button" onClick={() => setOpen(!open)} aria-expanded={open}><span className="menu-lines"><i /><i /><i /></span></button><div><div className="topbar-eyebrow">{portal}</div><div className="topbar-title">Good to see you, {user.fullName.split(' ')[0]} 👋</div></div></div>
+          <div className="topbar-left"><button className="menu-button" type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Open navigation menu"><span className="menu-lines"><i /><i /><i /></span></button><div className="topbar-heading"><div className="topbar-eyebrow">{portal}</div><div className="topbar-title">Good to see you, {user.fullName.split(' ')[0]} <span>👋</span></div></div></div>
           <div className="topbar-actions">
-            <button className="icon-button" type="button" onClick={toggleTheme} aria-label="Toggle theme" title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>{isDark ? '☀' : '☾'}</button>
-            <NavLink className="notification-button" to="/notifications" aria-label="Notifications">◔</NavLink>
-            <div className="user-chip"><div className="user-avatar">{initials}</div><div className="user-meta"><strong>{user.fullName}</strong><span>{user.role}</span></div></div>
+            <button className="icon-button theme-toggle" type="button" onClick={toggleTheme} aria-label="Toggle theme" title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}><span>{isDark ? '☀' : '☾'}</span><small>{isDark ? 'Light' : 'Dark'}</small></button>
+            <NavLink className="notification-button" to="/notifications" aria-label="Notifications"><span>◔</span><i /></NavLink>
+            <div className="user-chip"><div className="user-avatar">{initials}</div><div className="user-meta"><strong>{user.fullName}</strong><span>{user.role}</span></div><span className="user-chevron">⌄</span></div>
           </div>
         </header>
         <main className="content"><Outlet /></main>
