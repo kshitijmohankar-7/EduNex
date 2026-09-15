@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import './index.css';
 import './styles/modern.css';
+import './styles/immersive-shell.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
