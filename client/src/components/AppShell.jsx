@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
@@ -52,7 +52,6 @@ export default function AppShell() {
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
-  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [featuresOpen, setFeaturesOpen] = useState(false);
   const items = NAV_BY_ROLE[user.role] || [];
@@ -60,7 +59,6 @@ export default function AppShell() {
   const initials = user.fullName.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
   const portal = user.role === 'student' ? 'Student Portal' : user.role === 'faculty' ? 'Faculty Portal' : 'Admin Portal';
   const itemByLabel = useMemo(() => Object.fromEntries(items.map((item) => [item.label, item])), [items]);
-  const activeItem = items.find((item) => location.pathname === item.to || (item.to !== '/dashboard' && location.pathname.startsWith(`${item.to}/`)));
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -70,6 +68,7 @@ export default function AppShell() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  const toggleFeatures = () => setFeaturesOpen((value) => !value);
   const goToFeature = (label) => {
     const item = itemByLabel[label];
     if (!item) return;
@@ -77,7 +76,6 @@ export default function AppShell() {
     setFeaturesOpen(false);
     setOpen(false);
   };
-
   const signOut = () => {
     logout();
     navigate('/login');
@@ -124,7 +122,7 @@ export default function AppShell() {
                 </div>
               ))}
             </div>
-            <div className="feature-menu-footer"><span className="feature-status" /><span>{items.length} features available</span><span className="feature-hint">Select any card to open it</span></div>
+            <div className="feature-menu-footer"><span className="feature-status" /><span>{items.length} features available</span><span className="feature-hint">Select a feature to continue</span></div>
           </section>
         </>
       )}
@@ -134,32 +132,15 @@ export default function AppShell() {
           <div className="brand-mark"><span>E</span><i /></div>
           <div className="brand-copy"><div className="brand">EduNex</div><div className="brand-tag">Learn • Manage • Grow</div></div>
         </div>
-
         <div className="sidebar-portal"><span className="portal-dot" /><span>{portal}</span><span className="portal-role">{user.role}</span></div>
-
-        <button className={`all-features-button ${featuresOpen ? 'is-open' : ''}`} type="button" onClick={() => setFeaturesOpen((value) => !value)} aria-expanded={featuresOpen}>
-          <span className="all-features-icon">✦</span>
-          <span className="all-features-copy"><strong>All Features</strong><small>Explore your workspace</small></span>
-          <b>{featuresOpen ? '×' : '⌘'}</b>
-        </button>
-
-        <div className="quick-access-heading"><span>Quick access</span><span>{activeItem?.label || 'Dashboard'}</span></div>
-        <div className="quick-access">
-          <NavLink to={items[0]?.to || '/dashboard'} onClick={() => setOpen(false)} className={({ isActive }) => `nav-item quick-nav-item${isActive ? ' active' : ''}`}>
-            <span className="nav-icon">{items[0]?.icon || '⌂'}</span>
-            <span className="nav-label">{items[0]?.label || 'Dashboard'}</span>
-            <span className="nav-arrow">›</span>
-          </NavLink>
-          {activeItem && activeItem.to !== items[0]?.to && (
-            <NavLink to={activeItem.to} onClick={() => setOpen(false)} className="nav-item quick-nav-item active">
-              <span className="nav-icon">{activeItem.icon}</span>
-              <span className="nav-label">{activeItem.label}</span>
-              <span className="nav-arrow">●</span>
-            </NavLink>
-          )}
+        <div className="sidebar-clean-space">
+          <div className="sidebar-menu-prompt">
+            <div className="sidebar-menu-prompt-icon">☷</div>
+            <strong>All your features</strong>
+            <span>Open Menu whenever you need to navigate.</span>
+            <button type="button" onClick={toggleFeatures}>Open Menu <span>→</span></button>
+          </div>
         </div>
-
-        <div className="sidebar-clean-space" />
         <div className="sidebar-footer">
           <div className="sidebar-mini-card"><span className="status-dot" /><div><strong>All systems ready</strong><span>EduNex is online</span></div></div>
           <button className="signout-button" onClick={signOut}><span className="signout-icon">↪</span><span>Sign out</span></button>
@@ -173,7 +154,7 @@ export default function AppShell() {
             <div className="topbar-heading"><div className="topbar-eyebrow">{portal}</div><div className="topbar-title">Good to see you, {user.fullName.split(' ')[0]} <span>👋</span></div></div>
           </div>
           <div className="topbar-actions">
-            <button className="top-menu-button" type="button" onClick={() => setFeaturesOpen((value) => !value)} aria-expanded={featuresOpen}><span className="top-menu-icon">☷</span><span>Menu</span><small>{items.length}</small></button>
+            <button className="top-menu-button" type="button" onClick={toggleFeatures} aria-haspopup="dialog" aria-expanded={featuresOpen}><span className="top-menu-icon">☷</span><span>Menu</span><small>{items.length}</small></button>
             <button className="icon-button theme-toggle" type="button" onClick={toggleTheme} aria-label="Toggle theme" title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}><span>{isDark ? '☀' : '☾'}</span><small>{isDark ? 'Light' : 'Dark'}</small></button>
             <NavLink className="notification-button" to="/notifications" aria-label="Notifications"><span>◔</span><i /></NavLink>
             <div className="user-chip"><div className="user-avatar">{initials}</div><div className="user-meta"><strong>{user.fullName}</strong><span>{user.role}</span></div><span className="user-chevron">⌄</span></div>
