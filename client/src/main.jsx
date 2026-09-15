@@ -13,6 +13,7 @@ import './styles/feature-menu.css';
 import './styles/menu-only-shell.css';
 import './styles/leave.css';
 import './styles/advanced-features.css';
+import './styles/ai-tools.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
