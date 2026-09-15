@@ -133,14 +133,7 @@ export default function AppShell() {
           <div className="brand-copy"><div className="brand">EduNex</div><div className="brand-tag">Learn • Manage • Grow</div></div>
         </div>
         <div className="sidebar-portal"><span className="portal-dot" /><span>{portal}</span><span className="portal-role">{user.role}</span></div>
-        <div className="sidebar-clean-space">
-          <div className="sidebar-menu-prompt">
-            <div className="sidebar-menu-prompt-icon">☷</div>
-            <strong>All your features</strong>
-            <span>Open Menu whenever you need to navigate.</span>
-            <button type="button" onClick={toggleFeatures}>Open Menu <span>→</span></button>
-          </div>
-        </div>
+        <div className="sidebar-clean-space" aria-hidden="true" />
         <div className="sidebar-footer">
           <div className="sidebar-mini-card"><span className="status-dot" /><div><strong>All systems ready</strong><span>EduNex is online</span></div></div>
           <button className="signout-button" onClick={signOut}><span className="signout-icon">↪</span><span>Sign out</span></button>
