@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import './index.css';
 import './styles/modern.css';
+import './styles/dashboard.css';
 import './styles/immersive-shell.css';
 import './styles/feature-menu.css';
 import './styles/menu-only-shell.css';
