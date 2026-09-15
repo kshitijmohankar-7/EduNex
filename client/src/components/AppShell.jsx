@@ -1,1 +1,71 @@
-import{useState}from'react';import{Outlet,NavLink,useNavigate}from'react-router-dom';import{useAuth}from'../context/AuthContext';const NAV_BY_ROLE={student:[{to:'/dashboard',label:'Dashboard'},{to:'/planner',label:'Campus Planner'},{to:'/analytics',label:'Student Analytics'},{to:'/notifications',label:'Notifications'},{to:'/profile',label:'Profile'},{to:'/attendance',label:'Attendance'},{to:'/marksheet',label:'Marksheet & Marks'},{to:'/assignments',label:'Assignments'},{to:'/assignment-results',label:'Assignment Results'},{to:'/materials',label:'Study Materials'},{to:'/question-banks',label:'Question Banks'},{to:'/achievements',label:'Achievements'},{to:'/student/electives',label:'Subject Selection'},{to:'/announcements',label:'Announcements'},{to:'/academic-insights',label:'AI Academic Insights'},{to:'/ai',label:'AI Assistant'}],faculty:[{to:'/faculty',label:'Dashboard'},{to:'/planner',label:'Campus Planner'},{to:'/faculty/analytics',label:'Faculty Analytics'},{to:'/notifications',label:'Notifications'},{to:'/faculty/students',label:'Student Details'},{to:'/faculty/marks',label:'Enter Marks'},{to:'/faculty/marksheets',label:'Upload Marksheet'},{to:'/faculty/attendance',label:'Attendance'},{to:'/faculty/materials',label:'Study Materials'},{to:'/faculty/rag',label:'RAG Indexing'},{to:'/faculty/assignments',label:'Assignments'},{to:'/question-banks',label:'Question Banks'},{to:'/faculty/subject-requests',label:'Subject Requests'},{to:'/faculty/announcements',label:'Announcements'}],admin:[{to:'/admin',label:'Dashboard'},{to:'/planner',label:'Timetable Manager'},{to:'/admin/analytics',label:'Admin Analytics'},{to:'/notifications',label:'Notifications'},{to:'/admin/overview',label:'College Overview'},{to:'/admin/manage',label:'Administration'},{to:'/admin/announcements',label:'Announcements'}]};const overlay={position:'fixed',inset:0,zIndex:998,border:0,padding:0,background:'rgba(10,16,31,.48)',cursor:'pointer'};const button={display:'inline-flex',alignItems:'center',gap:8,minHeight:38,padding:'8px 13px',border:'1px solid var(--ink)',borderRadius:'var(--radius)',background:'var(--ink)',color:'var(--parchment)',cursor:'pointer',fontSize:13,fontWeight:700};export default function AppShell(){const{user,logout}=useAuth();const navigate=useNavigate();const[open,setOpen]=useState(false);const items=NAV_BY_ROLE[user.role]||[];const initials=user.fullName.split(' ').map(p=>p[0]).slice(0,2).join('');return <div className="app-shell">{open&&<button type="button" aria-label="Close menu" onClick={()=>setOpen(false)} style={overlay}/>}<aside className="sidebar" style={{position:'fixed',top:0,left:0,bottom:0,zIndex:999,width:280,maxWidth:'88vw',overflowY:'auto',boxShadow:open?'10px 0 30px rgba(0,0,0,.24)':'none',transform:open?'translateX(0)':'translateX(-105%)',transition:'transform 180ms ease'}}><div className="brand">EduNex</div><div className="brand-tag">Academic Ledger</div><div style={{fontFamily:'var(--font-mono)',fontSize:10,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--brass-dim)',marginBottom:10}}>Menu</div><ul className="nav-list">{items.map(i=><li key={i.to}><NavLink to={i.to} onClick={()=>setOpen(false)} className={({isActive})=>`nav-item${isActive?' active':''}`}>{i.label}</NavLink></li>)}</ul><div className="sidebar-footer"><button className="nav-item" style={{padding:'8px 0',color:'rgba(246,243,236,.6)'}} onClick={()=>{logout();navigate('/login');setOpen(false)}}>Sign out</button></div></aside><div className="main-area" style={{width:'100%'}}><header className="topbar"><div style={{display:'flex',alignItems:'center',gap:12}}><button type="button" onClick={()=>setOpen(!open)} aria-expanded={open} style={button}><span aria-hidden="true" style={{display:'inline-flex',flexDirection:'column',gap:3,width:15}}><span style={{width:15,height:2,background:'currentColor'}}/><span style={{width:15,height:2,background:'currentColor'}}/><span style={{width:15,height:2,background:'currentColor'}}/></span><span>{open?'Close':'Menu'}</span></button><div className="topbar-title">{user.role==='student'?'Student Portal':user.role==='faculty'?'Faculty Portal':'Administrator Portal'}</div></div><div className="user-chip"><span>{user.fullName}</span><div className="user-avatar">{initials}</div></div></header><main className="content"><Outlet/></main></div></div>}
+import { useState } from 'react';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+
+const NAV_BY_ROLE = {
+  student: [
+    { to: '/dashboard', label: 'Dashboard', icon: '⌂' }, { to: '/planner', label: 'Campus Planner', icon: '▦' },
+    { to: '/analytics', label: 'Analytics', icon: '◒' }, { to: '/notifications', label: 'Notifications', icon: '◔' },
+    { to: '/profile', label: 'Profile', icon: '○' }, { to: '/attendance', label: 'Attendance', icon: '✓' },
+    { to: '/marksheet', label: 'Marks & Marksheet', icon: '▤' }, { to: '/assignments', label: 'Assignments', icon: '□' },
+    { to: '/assignment-results', label: 'Assignment Results', icon: '↗' }, { to: '/materials', label: 'Study Materials', icon: '▱' },
+    { to: '/question-banks', label: 'Question Banks', icon: '?' }, { to: '/achievements', label: 'Achievements', icon: '✦' },
+    { to: '/student/electives', label: 'Subject Selection', icon: '◇' }, { to: '/announcements', label: 'Announcements', icon: '!' },
+    { to: '/academic-insights', label: 'AI Academic Insights', icon: '✧' }, { to: '/ai', label: 'AI Assistant', icon: '✦' },
+  ],
+  faculty: [
+    { to: '/faculty', label: 'Dashboard', icon: '⌂' }, { to: '/planner', label: 'Campus Planner', icon: '▦' },
+    { to: '/faculty/analytics', label: 'Analytics', icon: '◒' }, { to: '/notifications', label: 'Notifications', icon: '◔' },
+    { to: '/faculty/students', label: 'Student Details', icon: '○' }, { to: '/faculty/marks', label: 'Enter Marks', icon: '▤' },
+    { to: '/faculty/marksheets', label: 'Upload Marksheet', icon: '↥' }, { to: '/faculty/attendance', label: 'Attendance', icon: '✓' },
+    { to: '/faculty/materials', label: 'Study Materials', icon: '▱' }, { to: '/faculty/rag', label: 'RAG Indexing', icon: '✧' },
+    { to: '/faculty/assignments', label: 'Assignments', icon: '□' }, { to: '/question-banks', label: 'Question Banks', icon: '?' },
+    { to: '/faculty/subject-requests', label: 'Subject Requests', icon: '◇' }, { to: '/faculty/announcements', label: 'Announcements', icon: '!' },
+  ],
+  admin: [
+    { to: '/admin', label: 'Dashboard', icon: '⌂' }, { to: '/planner', label: 'Timetable Manager', icon: '▦' },
+    { to: '/admin/analytics', label: 'Analytics', icon: '◒' }, { to: '/notifications', label: 'Notifications', icon: '◔' },
+    { to: '/admin/overview', label: 'College Overview', icon: '▤' }, { to: '/admin/manage', label: 'Administration', icon: '⚙' },
+    { to: '/admin/announcements', label: 'Announcements', icon: '!' },
+  ],
+};
+
+export default function AppShell() {
+  const { user, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const items = NAV_BY_ROLE[user.role] || [];
+  const initials = user.fullName.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+  const portal = user.role === 'student' ? 'Student Portal' : user.role === 'faculty' ? 'Faculty Portal' : 'Admin Portal';
+
+  return (
+    <div className="app-shell">
+      {open && <button className="sidebar-overlay" type="button" aria-label="Close menu" onClick={() => setOpen(false)} />}
+      <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
+        <div className="sidebar-brand">
+          <div className="brand-mark">E</div>
+          <div><div className="brand">EduNex</div><div className="brand-tag">Learn • Manage • Grow</div></div>
+        </div>
+        <div className="nav-section-label">Workspace</div>
+        <nav><ul className="nav-list">{items.map((item) => <li key={item.to}><NavLink to={item.to} onClick={() => setOpen(false)} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}><span className="nav-icon">{item.icon}</span><span>{item.label}</span></NavLink></li>)}</ul></nav>
+        <div className="sidebar-footer">
+          <div className="sidebar-mini-card"><span className="status-dot" /> <span>EduNex is online</span></div>
+          <button className="signout-button" onClick={() => { logout(); navigate('/login'); setOpen(false); }}>↪ <span>Sign out</span></button>
+        </div>
+      </aside>
+      <div className="main-area">
+        <header className="topbar">
+          <div className="topbar-left"><button className="menu-button" type="button" onClick={() => setOpen(!open)} aria-expanded={open}><span className="menu-lines"><i /><i /><i /></span></button><div><div className="topbar-eyebrow">{portal}</div><div className="topbar-title">Good to see you, {user.fullName.split(' ')[0]} 👋</div></div></div>
+          <div className="topbar-actions">
+            <button className="icon-button" type="button" onClick={toggleTheme} aria-label="Toggle theme" title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>{isDark ? '☀' : '☾'}</button>
+            <NavLink className="notification-button" to="/notifications" aria-label="Notifications">◔</NavLink>
+            <div className="user-chip"><div className="user-avatar">{initials}</div><div className="user-meta"><strong>{user.fullName}</strong><span>{user.role}</span></div></div>
+          </div>
+        </header>
+        <main className="content"><Outlet /></main>
+      </div>
+    </div>
+  );
+}
