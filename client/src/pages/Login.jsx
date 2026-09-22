@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const ROLE_DEMO_EMAILS = {
-  student: 'student1@edunex.edu',
-  faculty: 'faculty1@edunex.edu',
+  student: 'kshitijmohankar@gmail.com',
+  faculty: 'rohanmehta@gmail.com',
   admin: 'admin1@edunex.edu',
 };
 
@@ -70,7 +70,7 @@ async function handleSubmit(e) {
           <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" />
         </div>
 
-        <button type="submit" className="btn" style={{ width: '100%' }}>Sign in</button>
+        <button type="submit" className="btn" style={{ width: '100%' }}>Sign in</button>\n        <a href="/forgot-password" style={{display:'block',marginTop:12,textAlign:'center'}}>Forgot password?</a>
       </form>
     </div>
   );
