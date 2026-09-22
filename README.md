@@ -179,3 +179,56 @@ The API normalizes older absolute Windows paths such as `D:/.../uploads/...` bef
 EduNex is now beyond the initial scaffold: **Phase 1, Phase 2 and Phase 3 feature work is implemented on `main`**, with additional reliability/security fixes and a new Campus OS planner/timetable module.
 
 Before testing after a pull, restart the backend and frontend so Vite/Node are not serving stale source files.
+
+
+## Production deployment
+
+EduNex is structured for a split production deployment:
+
+- **Frontend:** Vercel or another static-hosting provider using `client/`
+- **API:** Node/Express service using `server/`
+- **AI:** FastAPI service using `ai-service/`
+- **Database:** Managed PostgreSQL
+- **Files:** Persistent object storage or a persistent server disk; do not rely on ephemeral application filesystems for production uploads.
+- **RAG:** Persistent storage is required for the Chroma database.
+
+### Production environment variables
+
+**Frontend**
+```env
+VITE_API_BASE_URL=https://api.example.com/api
+VITE_API_TIMEOUT_MS=30000
+```
+
+**Node API**
+```env
+NODE_ENV=production
+PORT=5000
+DATABASE_URL=...
+DATABASE_SSL=true
+JWT_SECRET=...
+JWT_EXPIRES_IN=7d
+CLIENT_URL=https://app.example.com
+AI_SERVICE_URL=https://ai.example.com
+```
+
+**AI service**
+Use the existing `ai-service/.env.example` and set the production Gemini key/model plus the frontend origin. Never commit `.env` files or API keys.
+
+### Deployment checks
+
+1. Run `npm ci` and `npm run build` in `client/`.
+2. Run `npm ci --omit=dev` in `server/`.
+3. Start the API with `npm start`.
+4. Start the AI service with `uvicorn main:app --host 0.0.0.0 --port $PORT`.
+5. Verify `/api/health` and `/api/ready` before accepting traffic.
+6. Verify login, role authorization, uploads, assignment submission, marks, timetable and AI fallback.
+7. Configure HTTPS, managed PostgreSQL backups, persistent file storage and monitoring at the hosting provider.
+
+### AI reliability
+
+Gemini is an enhancement, not a single point of failure. EduNex now caches Gemini quota exhaustion temporarily and uses database/direct-answer, RAG and deterministic offline fallbacks where applicable. This prevents repeated frontend requests from hammering an exhausted free-tier quota.
+
+### Important production limitation
+
+The current upload implementation writes files to `uploads/`. For a multi-instance or ephemeral deployment, migrate this layer to object storage (S3-compatible storage, Supabase Storage, or the hosting provider's persistent disk) before treating uploaded academic documents as production data.
