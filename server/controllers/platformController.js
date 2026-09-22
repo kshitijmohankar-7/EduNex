@@ -13,8 +13,21 @@ async function requestPasswordReset(req,res,next){
       const token=crypto.randomBytes(32).toString('hex');
       await pool.query('DELETE FROM password_reset_tokens WHERE user_id=$1 OR expires_at<NOW()',[user.id]);
       await pool.query('INSERT INTO password_reset_tokens(user_id,token_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL \'30 minutes\')',[user.id,hashToken(token)]);
-      // Delivery is intentionally external: never return tokens in production responses.
-      if(process.env.NODE_ENV!=='production') console.log('[EduNex] Password reset token:',token);
+      const resetBaseUrl=String(process.env.PASSWORD_RESET_URL||process.env.CLIENT_URL||'http://localhost:5173').replace(/\/$/,'');
+      const resetUrl=resetBaseUrl+'/reset-password?token='+encodeURIComponent(token);
+      const apiKey=String(process.env.RESEND_API_KEY||'').trim();
+      const from=String(process.env.MAIL_FROM||'EduNex <onboarding@resend.dev>').trim();
+      if(apiKey){
+        try{
+          const mailResponse=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json'},body:JSON.stringify({from,to:[email],subject:'EduNex password reset',html:'<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>Reset your EduNex password</h2><p>We received a request to reset your EduNex password.</p><p><a href="'+resetUrl+'" style="display:inline-block;padding:12px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px">Reset Password</a></p><p>This link expires in 30 minutes.</p><p>If you did not request this, you can ignore this email.</p></div>'})});
+          if(!mailResponse.ok) throw new Error('Resend returned HTTP '+mailResponse.status);
+        }catch(mailError){
+          console.error('[EduNex] Password reset email failed:',mailError.message);
+          if(process.env.NODE_ENV!=='production') console.log('[EduNex] Password reset link:',resetUrl);
+        }
+      }else if(process.env.NODE_ENV!=='production'){
+        console.log('[EduNex] Password reset link:',resetUrl);
+      }
     }
     res.json({message:'If an active account exists for that email, a password reset link has been created.'});
   }catch(e){next(e)}
