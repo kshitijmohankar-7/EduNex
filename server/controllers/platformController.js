@@ -20,7 +20,11 @@ async function requestPasswordReset(req,res,next){
       if(apiKey){
         try{
           const mailResponse=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json'},body:JSON.stringify({from,to:[email],subject:'EduNex password reset',html:'<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>Reset your EduNex password</h2><p>We received a request to reset your EduNex password.</p><p><a href="'+resetUrl+'" style="display:inline-block;padding:12px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px">Reset Password</a></p><p>This link expires in 30 minutes.</p><p>If you did not request this, you can ignore this email.</p></div>'})});
-          if(!mailResponse.ok) throw new Error('Resend returned HTTP '+mailResponse.status);
+          if(!mailResponse.ok){
+            let detail='';
+            try{detail=await mailResponse.text()}catch{}
+            throw new Error('Resend returned HTTP '+mailResponse.status+(detail?' - '+detail.slice(0,1000):''));
+          }
         }catch(mailError){
           console.error('[EduNex] Password reset email failed:',mailError.message);
           if(process.env.NODE_ENV!=='production') console.log('[EduNex] Password reset link:',resetUrl);
