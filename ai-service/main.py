@@ -41,12 +41,20 @@ load_dotenv()
 
 app = FastAPI(title="EduNex AI Service")
 
+_allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("CLIENT_URL", "http://localhost:5173").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+    allow_credentials=False,
 )
+
+_gemini_quota_blocked_until = 0.0
 
 
 class ChatRequest(BaseModel):
@@ -203,6 +211,11 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
     last_status = "http_error"
     last_retry = None
 
+    import time
+    global _gemini_quota_blocked_until
+    if _gemini_quota_blocked_until > time.time():
+        return None, "quota_exhausted", max(1, int(_gemini_quota_blocked_until - time.time()))
+
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         generation_config = {"maxOutputTokens": 4096}
@@ -291,6 +304,11 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
                     return None, "auth_error", None
 
                 if exc.code == 429:
+                    # A daily free-tier quota should not be hammered on every
+                    # frontend request. Cache the blocked state for the retry
+                    # interval, with a conservative 60-minute floor.
+                    block_seconds = max(retry_after or 0, 3600)
+                    _gemini_quota_blocked_until = time.time() + block_seconds
                     print(f"Gemini quota/rate-limit error on {model}: {response_body[:1200]}")
                     return None, "quota_exhausted", retry_after
 
