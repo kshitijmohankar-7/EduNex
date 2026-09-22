@@ -147,3 +147,26 @@ table.ledger-table td { border-bottom:1px solid var(--ed-border) !important; col
   .stat-card { min-height:112px; padding:15px !important; }
   .stat-value { font-size:24px !important; }
 }
+
+
+/* Final menu-only shell: the desktop sidebar is removed because navigation now lives in the top menu. */
+.sidebar{display:none!important}
+.main-area{margin-left:0!important}
+.topbar-left{gap:0}
+.top-signout-button{height:40px;display:flex;align-items:center;gap:7px;padding:0 11px;border:1px solid var(--ed-border);border-radius:12px;background:var(--ed-surface);color:var(--ed-text);font-size:10px;font-weight:850;cursor:pointer;box-shadow:0 4px 14px rgba(20,30,60,.035);transition:.18s ease}
+.top-signout-button:hover{color:var(--ed-danger);border-color:rgba(224,82,96,.35);transform:translateY(-1px);box-shadow:0 9px 22px rgba(224,82,96,.10)}
+.top-signout-button span:first-child{font-size:15px}
+.sidebar-overlay{display:none!important}
+.academic-subject-card{background:var(--ed-surface-2)!important;border-color:var(--ed-border)!important;color:var(--ed-text)!important}
+.academic-subject-card strong,.academic-subject-card small{color:var(--ed-text)!important}
+.academic-subject-card small{opacity:.78}
+.ai-output,.tool-output,.quiz-card,.flashcard,.quiz-toolbar,.flash-toolbar{color:var(--ed-text)}
+@media(max-width:900px){
+  .topbar{padding:12px 18px!important}
+  .top-signout-button span:last-child{display:none}
+  .top-signout-button{width:40px;padding:0;justify-content:center}
+}
+@media(max-width:560px){
+  .topbar-actions{gap:6px}
+  .top-signout-button,.top-menu-button,.icon-button,.notification-button{height:38px}
+}
