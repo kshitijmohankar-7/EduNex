@@ -377,6 +377,68 @@ def _make_readable_paragraphs(text: str, max_sentences: int = 5) -> List[str]:
     return paragraphs
 
 
+
+def offline_general_fallback(message: str) -> Optional[str]:
+    """Useful deterministic answers for common academic questions when Gemini is unavailable."""
+    text = str(message or "").lower()
+    if "inheritance" in text and "java" in text:
+        return """## Java Inheritance
+
+**Inheritance** lets one Java class acquire fields and methods from another class.
+
+```java
+class Animal { void sound() { System.out.println("Animal"); } }
+class Dog extends Animal { void bark() { System.out.println("Bark"); } }
+```
+
+Here, `Dog` inherits from `Animal` using **extends**. It promotes code reuse and supports method overriding and runtime polymorphism."""
+    if "polymorphism" in text and "java" in text:
+        return """## Java Polymorphism
+
+**Polymorphism** means one interface or method call can represent different behavior.
+
+1. **Compile-time polymorphism** — method overloading.
+2. **Run-time polymorphism** — method overriding.
+
+A parent reference can refer to a child object, allowing the overridden child method to execute at runtime."""
+    if "encapsulation" in text and ("java" in text or "oop" in text):
+        return """## Encapsulation
+
+**Encapsulation** means bundling data and methods inside a class and controlling direct access to the data. In Java, fields are commonly made `private` and accessed through controlled methods such as getters and setters."""
+    if "array" in text and "java" in text:
+        return """## Java Arrays
+
+An **array** stores multiple values of the same type in a fixed-size indexed structure.
+
+```java
+int[] marks = {80, 75, 91};
+System.out.println(marks[0]); // 80
+```
+
+Indexes start at **0**. A two-dimensional array stores values using row and column indexes."""
+    if "oop" in text and "java" in text:
+        return """## OOP in Java
+
+The four commonly taught OOP principles are:
+- **Encapsulation** — control access to object data.
+- **Inheritance** — derive a class from another class.
+- **Polymorphism** — one interface can have different implementations.
+- **Abstraction** — expose essential behavior while hiding implementation details."""
+    if "for loop" in text and "java" in text:
+        return """## Java for loop
+
+A `for` loop repeats a block while a condition is true.
+
+```java
+for (int i = 1; i <= 5; i++) {
+    System.out.println(i);
+}
+```
+
+It contains initialization, condition and update expressions."""
+    return None
+
+
 def rag_material_fallback(
     message: str,
     rag_chunks: List[Dict[str, Any]],
@@ -577,7 +639,7 @@ def chat(req: ChatRequest):
             retry_after_seconds=retry_after_seconds,
         )
 
-    offline_reply = educational_fallback(message)
+    offline_reply = educational_fallback(message) or offline_general_fallback(message)
     if offline_reply:
         return ChatResponse(
             reply=offline_reply,
