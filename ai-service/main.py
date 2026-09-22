@@ -175,15 +175,29 @@ def _parse_retry_after_seconds(response_body: str) -> Optional[int]:
 
 
 def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
-    """Call Gemini with a small, reliable model fallback chain."""
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    """Call Gemini using the current API-key conventions and a resilient model chain."""
+    # Google supports both names; GEMINI_API_KEY remains the EduNex name while
+    # GOOGLE_API_KEY makes the service compatible with the current Gemini tooling.
+    api_key = (
+        os.getenv("GEMINI_API_KEY", "").strip()
+        or os.getenv("GOOGLE_API_KEY", "").strip()
+    )
     if not api_key:
-        print("Gemini request skipped: GEMINI_API_KEY is not configured.")
+        print("Gemini request skipped: GEMINI_API_KEY/GOOGLE_API_KEY is not configured.")
         return None, "not_configured", None
 
     configured = os.getenv("GEMINI_MODEL", "").strip()
     models = [configured] if configured else []
-    for candidate_model in ("gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"):
+
+    # Prefer current stable Flash models, then keep 2.5 as a compatibility fallback.
+    for candidate_model in (
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+    ):
         if candidate_model not in models:
             models.append(candidate_model)
 
@@ -194,10 +208,12 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         generation_config = {"maxOutputTokens": 4096}
+
         if model.startswith("gemini-3."):
             generation_config["thinkingConfig"] = {"thinkingLevel": "low"}
         else:
             generation_config["thinkingConfig"] = {"thinkingBudget": 0}
+
         if is_json_request:
             generation_config["responseMimeType"] = "application/json"
 
@@ -210,7 +226,10 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
         req = urlrequest.Request(
             url,
             data=body,
-            headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key,
+            },
             method="POST",
         )
 
@@ -227,7 +246,9 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
             candidate = candidates[0]
             parts = candidate.get("content", {}).get("parts", [])
             text = "".join(
-                part.get("text", "") for part in parts if isinstance(part, dict)
+                part.get("text", "")
+                for part in parts
+                if isinstance(part, dict) and not part.get("thought")
             ).strip()
 
             if not text:
@@ -249,14 +270,35 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
 
             retry_after = _parse_retry_after_seconds(response_body)
             last_retry = retry_after
+            lower_body = response_body.lower()
+
+            # Current Gemini API keys created in AI Studio are auth keys. Older
+            # unrestricted standard keys can be rejected during the 2026 migration.
+            if exc.code in (401, 403) or (
+                exc.code == 400
+                and any(term in lower_body for term in (
+                    "api key not valid",
+                    "api key is invalid",
+                    "authentication",
+                    "permission denied",
+                    "unauthorized",
+                ))
+            ):
+                print(
+                    f"Gemini authentication/permission error on {model} "
+                    f"(HTTP {exc.code}): {response_body[:1200]}"
+                )
+                return None, "auth_error", None
 
             if exc.code == 429:
                 print(f"Gemini quota/rate-limit error on {model}: {response_body[:1200]}")
                 return None, "quota_exhausted", retry_after
 
             if exc.code in (400, 404):
-                # A stale/unsupported model should not take down the whole AI service.
-                print(f"Gemini model {model} unavailable ({exc.code}); trying next model.")
+                print(
+                    f"Gemini model {model} unavailable ({exc.code}); "
+                    "trying the next supported model."
+                )
                 last_status = "model_unavailable"
                 continue
 
