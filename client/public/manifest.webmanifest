@@ -1,0 +1,10 @@
+{
+  "name": "EduNex — College Management & Student Success",
+  "short_name": "EduNex",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#111827",
+  "description": "AI-powered college management and student success platform.",
+  "icons": []
+}
