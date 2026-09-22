@@ -193,7 +193,11 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
 
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        generation_config = {"maxOutputTokens": 4096}\n        if model.startswith("gemini-3."):\n            generation_config["thinkingConfig"] = {"thinkingLevel": "low"}\n        else:\n            generation_config["thinkingConfig"] = {"thinkingBudget": 0}
+        generation_config = {"maxOutputTokens": 4096}
+        if model.startswith("gemini-3."):
+            generation_config["thinkingConfig"] = {"thinkingLevel": "low"}
+        else:
+            generation_config["thinkingConfig"] = {"thinkingBudget": 0}
         if is_json_request:
             generation_config["responseMimeType"] = "application/json"
 
