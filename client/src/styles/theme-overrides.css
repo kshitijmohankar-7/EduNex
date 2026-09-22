@@ -1,0 +1,53 @@
+/* Final EduNex visual normalization: remove legacy brass/yellow accents. */
+:root {
+  --brass: var(--ed-primary);
+  --brass-dim: var(--ed-primary);
+  --burgundy: var(--ed-danger);
+  --forest: var(--ed-success);
+  --ink: var(--ed-text);
+  --ink-soft: var(--ed-primary-strong);
+  --parchment: var(--ed-bg);
+  --parchment-dim: var(--ed-surface-2);
+  --ink-text: var(--ed-text);
+  --muted-text: var(--ed-muted);
+  --line: var(--ed-border);
+}
+
+/* Legacy feature/page accents */
+[class*="feature"] .brass,
+[class*="feature"] .gold,
+[class*="feature"] .yellow,
+.feature-card-icon,
+.feature-card-arrow,
+.feature-kicker { color: var(--ed-primary) !important; }
+
+.btn,
+button.btn { background: linear-gradient(135deg,var(--ed-primary),#746fff) !important; color:#fff !important; border-color:var(--ed-primary) !important; }
+.btn:hover,
+button.btn:hover { background:linear-gradient(135deg,var(--ed-primary-strong),var(--ed-primary)) !important; }
+
+.code-stamp,
+.faculty-marks-page .marks-step,
+.faculty-marks-page .marks-input:focus,
+.faculty-marks-page .mark-input:focus { border-color:var(--ed-primary) !important; }
+
+.stat-card::before { background:var(--ed-primary) !important; }
+.field input:focus,
+.field select:focus { outline-color:var(--ed-primary) !important; }
+
+/* Replace common legacy yellow/brass text and borders across feature pages. */
+.faculty-marks-page .marks-hero h1,
+.faculty-marks-page .section-title h3,
+.faculty-marks-page .student-banner h3,
+.faculty-marks-page .subject-name,
+.faculty-marks-page .grade-cell { color:var(--ed-text) !important; }
+.faculty-marks-page .exam-note { border-left-color:var(--ed-primary) !important; }
+.faculty-marks-page .message { border-left-color:var(--ed-success) !important; color:var(--ed-success) !important; }
+
+/* Keep semantic warning states amber, but never use yellow as the primary feature color. */
+.pill-warn { background:rgba(233,154,46,.13) !important; color:var(--ed-warning) !important; }
+
+:root[data-theme='dark'] .faculty-marks-page .marks-input,
+:root[data-theme='dark'] .faculty-marks-page .mark-input,
+:root[data-theme='dark'] .faculty-marks-page .exam-select,
+:root[data-theme='dark'] .faculty-marks-page .student-result { background:var(--ed-surface) !important; color:var(--ed-text) !important; }
