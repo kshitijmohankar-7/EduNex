@@ -24,7 +24,7 @@ export default function AdminExamSchedule() {
 
   function edit(item){
     setEditing(item.id);
-    setForm({subjectId:String(item.subject_id),examType:item.exam_type||'END SEMESTER',examDate:item.exam_date||'',startTime:item.start_time?.slice(0,5)||'',endTime:item.end_time?.slice(0,5)||'',room:item.room||'',instructions:item.instructions||''});
+    setForm({subjectId:String(item.subject_id),examType:item.exam_type||'END SEMESTER',examDate:item.exam_date||'',startTime:item.start_time?.slice(0,5)||'',endTime:item.end_time?.slice(0,5)||'',instructions:item.instructions||''});
     setSuccess('');
   }
   function reset(){setEditing(null);setForm(empty);}
@@ -54,14 +54,13 @@ export default function AdminExamSchedule() {
           <label>Exam date<input required type="date" value={form.examDate} onChange={e=>setForm({...form,examDate:e.target.value})}/></label>
           <label>Start time<input required type="time" value={form.startTime} onChange={e=>setForm({...form,startTime:e.target.value})}/></label>
           <label>End time<input type="time" value={form.endTime} onChange={e=>setForm({...form,endTime:e.target.value})}/></label>
-          <label>Room / Hall<input value={form.room} onChange={e=>setForm({...form,room:e.target.value})} placeholder="Room 204"/></label>
           <label>Instructions<input value={form.instructions} onChange={e=>setForm({...form,instructions:e.target.value})} placeholder="Bring college ID"/></label>
         </div>
         <button className="btn" disabled={saving}>{saving?'Saving…':editing?'Update Schedule':'Publish Exam'}</button>
       </form>
     </section>
     <section className="panel"><div className="section-heading"><div><span className="eyebrow">Published</span><h2>Official schedule</h2></div></div>
-      {loading?<div className="tool-empty">Loading…</div>:items.length?<div className="leave-table-wrap"><table className="modern-table"><thead><tr><th>Subject</th><th>Exam</th><th>Date</th><th>Time</th><th>Room</th><th>Actions</th></tr></thead><tbody>{items.map(x=><tr key={x.id}><td><strong>{x.subject_name}</strong><br/><span>{x.subject_code}</span></td><td>{x.exam_type}</td><td>{x.exam_date}</td><td>{x.start_time?.slice(0,5)}{x.end_time?` – ${x.end_time.slice(0,5)}`:''}</td><td>{x.room||'—'}</td><td><button className="btn" type="button" onClick={()=>edit(x)}>Edit</button> <button className="btn" type="button" onClick={()=>remove(x.id)}>Delete</button></td></tr>)}</tbody></table></div>:<div className="tool-empty">No exam schedule entries yet.</div>}
+      {loading?<div className="tool-empty">Loading…</div>:items.length?<div className="leave-table-wrap"><table className="modern-table"><thead><tr><th>Subject</th><th>Exam</th><th>Date</th><th>Time</th><th>Actions</th></tr></thead><tbody>{items.map(x=><tr key={x.id}><td><strong>{x.subject_name}</strong><br/><span>{x.subject_code}</span></td><td>{x.exam_type}</td><td>{x.exam_date}</td><td>{x.start_time?.slice(0,5)}{x.end_time?` – ${x.end_time.slice(0,5)}`:''}</td><td><button className="btn" type="button" onClick={()=>edit(x)}>Edit</button> <button className="btn" type="button" onClick={()=>remove(x.id)}>Delete</button></td></tr>)}</tbody></table></div>:<div className="tool-empty">No exam schedule entries yet.</div>}
     </section>
   </div>;
 }
