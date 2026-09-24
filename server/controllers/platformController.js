@@ -81,4 +81,43 @@ async function listTickets(req,res,next){try{const r=await pool.query('SELECT t.
 async function createTicket(req,res,next){try{const subject=String(req.body?.subject||'').trim();const description=String(req.body?.description||'').trim();if(!subject||!description)return res.status(400).json({error:'subject and description are required'});const r=await pool.query('INSERT INTO help_desk_tickets(user_id,subject,description,priority) VALUES($1,$2,$3,$4) RETURNING *',[req.user.id,subject,description,['low','normal','high','urgent'].includes(req.body?.priority)?req.body.priority:'normal']);res.status(201).json(r.rows[0])}catch(e){next(e)}}
 async function updateTicket(req,res,next){try{if(req.user.role!=='admin')return res.status(403).json({error:'Admin access required'});const fields=[];const values=[];for(const key of ['status','priority','resolution'])if(req.body?.[key]!==undefined){fields.push(`${key}=$${values.length+1}`);values.push(String(req.body[key]))}if(!fields.length)return res.status(400).json({error:'No changes provided'});values.push(req.params.id);const r=await pool.query(`UPDATE help_desk_tickets SET ${fields.join(',')},updated_at=NOW() WHERE id=$${values.length} RETURNING *`,values);if(!r.rows.length)return res.status(404).json({error:'Ticket not found'});res.json(r.rows[0])}catch(e){next(e)}}
 async function preferences(req,res,next){try{if(req.method==='GET'){const r=await pool.query('SELECT announcements,assignments,grades,attendance,messages FROM user_notification_preferences WHERE user_id=$1',[req.user.id]);return res.json(r.rows[0]||{announcements:true,assignments:true,grades:true,attendance:true,messages:true})}const allowed=['announcements','assignments','grades','attendance','messages'];const values=allowed.map(k=>req.body?.[k]===false?false:true);const r=await pool.query(`INSERT INTO user_notification_preferences(user_id,announcements,assignments,grades,attendance,messages) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id) DO UPDATE SET announcements=EXCLUDED.announcements,assignments=EXCLUDED.assignments,grades=EXCLUDED.grades,attendance=EXCLUDED.attendance,messages=EXCLUDED.messages,updated_at=NOW() RETURNING *`,[req.user.id,...values]);res.json(r.rows[0])}catch(e){next(e)}}
-module.exports={requestPasswordReset,resetPassword,listAiSessions,createAiSession,getAiSession,saveAiMessages,listMessages,sendMessage,markMessageRead,listTickets,createTicket,updateTicket,preferences};
+
+async function listCommunicationContacts(req,res,next){
+  try{
+    const targetRole=req.user.role==='student'?'faculty':'student';
+    const result=await pool.query(
+      `SELECT u.id,u.full_name,u.email,u.role,
+              f.faculty_code,s.student_code
+       FROM users u
+       LEFT JOIN faculty f ON f.user_id=u.id
+       LEFT JOIN students s ON s.user_id=u.id
+       WHERE u.role=$1 AND u.is_active=TRUE
+       ORDER BY u.full_name`,[targetRole]
+    );
+    res.json({items:result.rows});
+  }catch(e){next(e)}
+}
+
+async function createFeedback(req,res,next){
+  try{
+    const rating=Number(req.body?.rating);
+    const message=String(req.body?.message||'').trim().slice(0,2000);
+    if(!Number.isInteger(rating)||rating<1||rating>5)return res.status(400).json({error:'Rating must be between 1 and 5.'});
+    const result=await pool.query('INSERT INTO feedback(user_id,rating,message) VALUES($1,$2,$3) RETURNING *',[req.user.id,rating,message||null]);
+    res.status(201).json(result.rows[0]);
+  }catch(e){next(e)}
+}
+
+async function listFeedback(req,res,next){
+  try{
+    const result=await pool.query(
+      req.user.role==='admin'
+        ? `SELECT f.id,f.rating,f.message,f.created_at,u.full_name,u.email FROM feedback f JOIN users u ON u.id=f.user_id ORDER BY f.created_at DESC LIMIT 500`
+        : `SELECT id,rating,message,created_at FROM feedback WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`,
+      req.user.role==='admin'?[]:[req.user.id]
+    );
+    res.json({items:result.rows});
+  }catch(e){next(e)}
+}
+
+module.exports={requestPasswordReset,resetPassword,listAiSessions,createAiSession,getAiSession,saveAiMessages,listMessages,sendMessage,markMessageRead,listCommunicationContacts,listTickets,createTicket,updateTicket,preferences,createFeedback,listFeedback};
