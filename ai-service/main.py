@@ -248,7 +248,7 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
         # a model so transient capacity spikes do not force offline mode.
         for attempt in range(2):
             try:
-                with urlrequest.urlopen(req, timeout=35) as response:
+                with urlrequest.urlopen(req, timeout=12) as response:
                     data = json.loads(response.read().decode("utf-8"))
 
                 candidates = data.get("candidates", [])
