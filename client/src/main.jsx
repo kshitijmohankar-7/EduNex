@@ -7,7 +7,6 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import './index.css';
 import './styles/modern.css';
-import './styles/app-polish.css';
 import './styles/dashboard.css';
 import './styles/immersive-shell.css';
 import './styles/feature-menu.css';
@@ -17,6 +16,7 @@ import './styles/campus-services.css';
 import './styles/advanced-features.css';
 import './styles/ai-tools.css';
 import './styles/theme-overrides.css';
+import './styles/app-polish.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
