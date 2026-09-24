@@ -7,6 +7,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import './index.css';
 import './styles/modern.css';
+import './styles/app-polish.css';
 import './styles/dashboard.css';
 import './styles/immersive-shell.css';
 import './styles/feature-menu.css';
