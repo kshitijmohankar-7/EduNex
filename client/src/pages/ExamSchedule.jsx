@@ -1,1 +1,34 @@
-import{useMemo,useState}from'react';const exams=[['Data Structures','20 Sep','10:00 AM'],['Database Systems','24 Sep','2:00 PM'],['Operating Systems','28 Sep','10:00 AM']];export default function ExamSchedule(){const[q,setQ]=useState('');const rows=useMemo(()=>exams.filter(x=>x[0].toLowerCase().includes(q.toLowerCase())),[q]);return <div className="page-shell"><div className="page-heading"><div><span className="dashboard-kicker">Academics</span><h1>Exam Schedule</h1><p>Keep upcoming examinations visible and organized.</p></div></div><section className="panel"><input className="search-input" value={q} onChange={e=>setQ(e.target.value)} placeholder="Search subject..."/>{rows.map(x=><div className="academic-subject-card" key={x[0]}><strong>{x[0]}</strong><small>{x[1]} • {x[2]}</small></div>)}</section></div>}
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '../services/api';
+
+export default function ExamSchedule() {
+  const [items, setItems] = useState([]);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  async function load() {
+    setLoading(true); setError('');
+    try { setItems((await api.getExamSchedule()).items || []); }
+    catch (e) { setError(e.message); } finally { setLoading(false); }
+  }
+  useEffect(() => { load(); }, []);
+
+  const rows = useMemo(() => items.filter(x =>
+    `${x.subject_name} ${x.subject_code} ${x.exam_type}`.toLowerCase().includes(query.toLowerCase())
+  ), [items, query]);
+
+  return <div className="page-shell">
+    <div className="page-heading">
+      <div><span className="dashboard-kicker">Academics</span><h1>Exam Schedule</h1><p>Official examination schedule published by the administrator.</p></div>
+    </div>
+    {error && <div className="error-text">{error}</div>}
+    <section className="panel">
+      <input className="search-input" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search subject or exam type..." />
+      {loading ? <div className="tool-empty">Loading exam schedule…</div> :
+        rows.length ? <div className="leave-table-wrap"><table className="modern-table"><thead><tr><th>Subject</th><th>Exam</th><th>Date</th><th>Time</th><th>Room</th><th>Instructions</th></tr></thead><tbody>
+          {rows.map(x=><tr key={x.id}><td><strong>{x.subject_name}</strong><br/><span>{x.subject_code}</span></td><td>{x.exam_type}</td><td>{new Date(`${x.exam_date}T00:00:00`).toLocaleDateString()}</td><td>{x.start_time?.slice(0,5)}{x.end_time ? ` – ${x.end_time.slice(0,5)}` : ''}</td><td>{x.room || '—'}</td><td>{x.instructions || '—'}</td></tr>)}
+        </tbody></table></div> : <div className="tool-empty">No examinations have been published yet.</div>}
+    </section>
+  </div>;
+}
