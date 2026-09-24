@@ -52,7 +52,7 @@ async function updateExam(req, res, next) {
     const result = await pool.query(
       `UPDATE exam_schedules
        SET subject_id=$1,exam_type=$2,exam_date=$3,start_time=$4,end_time=$5,instructions=$6,updated_at=NOW()
-       WHERE id=$8 RETURNING *`,
+       WHERE id=$7 RETURNING *`,
       [v.subjectId,v.examType,v.examDate,v.startTime,v.endTime,v.instructions,Number(req.params.id)]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Exam schedule entry not found.' });
