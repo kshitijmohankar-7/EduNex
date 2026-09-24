@@ -70,7 +70,8 @@ async function handleSubmit(e) {
           <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" />
         </div>
 
-        <button type="submit" className="btn" style={{ width: '100%' }}>Sign in</button>\n        <a href="/forgot-password" style={{display:'block',marginTop:12,textAlign:'center'}}>Forgot password?</a>
+        <button type="submit" className="btn" style={{ width: '100%' }}>Sign in</button>
+        <a href="/forgot-password" style={{display:'block',marginTop:12,textAlign:'center'}}>Forgot password?</a>
       </form>
     </div>
   );
