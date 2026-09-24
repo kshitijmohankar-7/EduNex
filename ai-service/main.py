@@ -197,12 +197,11 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
     # Flash models. Lite models are included as lower-capacity fallbacks.
     models = [configured] if configured else []
     for candidate_model in (
+        "gemini-3.8-flash",
+        "gemini-3.5-flash-lite",
         "gemini-3.6-flash",
         "gemini-3.5-flash",
-        "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
     ):
         if candidate_model not in models:
             models.append(candidate_model)
@@ -247,7 +246,7 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
         # HTTP 503 means temporary service capacity/unavailability. Google
         # recommends retrying after a short wait; do that before abandoning
         # a model so transient capacity spikes do not force offline mode.
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 with urlrequest.urlopen(req, timeout=35) as response:
                     data = json.loads(response.read().decode("utf-8"))
@@ -315,7 +314,7 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
                 if exc.code == 503:
                     # Exponential backoff: 2s, 4s, 8s unless Google's
                     # response supplies a more specific retry interval.
-                    wait_seconds = retry_after or (2 ** (attempt + 1))
+                    wait_seconds = retry_after or 2
                     print(
                         f"Gemini capacity unavailable on {model} (HTTP 503), "
                         f"retry {attempt + 1}/3 in {wait_seconds}s."
@@ -323,7 +322,7 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
                     last_status = "service_unavailable"
                     if attempt < 2:
                         import time
-                        time.sleep(min(wait_seconds, 10))
+                        time.sleep(min(wait_seconds, 3))
                         continue
                     break
 
