@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS exam_schedules (
   exam_date DATE NOT NULL,
   start_time TIME NOT NULL,
   end_time TIME,
-  room VARCHAR(100),
   instructions TEXT,
   created_by INTEGER NOT NULL REFERENCES users(id),
   created_at TIMESTAMP DEFAULT NOW(),
