@@ -73,14 +73,13 @@ async function removeUpload(filePath) {
   const key = storageKeyFromPath(filePath);
   if (useSupabase()) {
     assertSupabaseConfig();
-    const response = await fetch(`${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}`, {
+    const response = await fetch(`${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${key.split('/').map(encodeURIComponent).join('/')}`, {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${supabaseKey}`,
         apikey: supabaseKey,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ prefixes: [key] }),
     });
     if (!response.ok && response.status !== 404) {
       const body = await response.text();
