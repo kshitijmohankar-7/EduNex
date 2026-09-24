@@ -43,7 +43,7 @@ async function listPeople(req, res, next) {
       SELECT u.id, u.email, u.full_name, u.role, u.is_active, u.created_at,
              s.student_code, s.department_id AS student_department_id,
              s.course_id, s.current_semester_id, s.division_id, s.academic_year_id,
-             f.faculty_code, f.department_id AS faculty_department_id,
+             f.faculty_code, f.id AS faculty_profile_id, f.department_id AS faculty_department_id,
              d_student.name AS student_department,
              d_faculty.name AS faculty_department
       FROM users u
