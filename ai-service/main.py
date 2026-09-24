@@ -6,9 +6,11 @@ Q&A over study materials, and performance insights.
 Authorization stays in the Node backend. This service only reasons over the
 context that Node explicitly sends for the authenticated student.
 """
+import base64
 import json
 import os
 import re
+import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 from urllib import error, request as urlrequest
 
@@ -82,6 +84,12 @@ class IndexFileRequest(BaseModel):
     subject_id: int
     title: str
     file_path: str
+
+
+class IndexBytesRequest(BaseModel):
+    subject_id: int
+    title: str
+    content_base64: str
 
 
 def build_student_prompt(
@@ -762,6 +770,37 @@ def index_document_endpoint(req: IndexRequest):
     except Exception as exc:
         print(f"RAG document indexing error: {exc}")
         return {"chunks_indexed": 0, "rag_available": True, "error": str(exc)}
+
+
+@app.post("/index-bytes")
+def index_bytes_endpoint(req: IndexBytesRequest):
+    """Index uploaded file bytes without relying on a shared filesystem."""
+    if not RAG_AVAILABLE or index_file is None:
+        return {
+            "chunks_indexed": 0,
+            "rag_available": False,
+            "message": "RAG dependencies are not available.",
+        }
+
+    temp_path = None
+    try:
+        raw = base64.b64decode(req.content_base64, validate=True)
+        if not raw:
+            return {"chunks_indexed": 0, "rag_available": True, "error": "Uploaded file is empty."}
+        with tempfile.NamedTemporaryFile(prefix="edunex-rag-", suffix=".upload", delete=False) as temp:
+            temp.write(raw)
+            temp_path = temp.name
+        chunks_indexed = index_file(req.subject_id, req.title, temp_path)
+        return {"chunks_indexed": chunks_indexed, "rag_available": True}
+    except Exception as exc:
+        print(f"RAG byte indexing error: {exc}")
+        return {"chunks_indexed": 0, "rag_available": True, "error": str(exc)}
+    finally:
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 
 @app.post("/index-file")
