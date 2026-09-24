@@ -2,7 +2,10 @@ const express=require('express');const router=express.Router();const auth=requir
 router.post('/password-reset/request',c.requestPasswordReset);router.post('/password-reset/reset',c.resetPassword);
 router.use(auth);
 router.get('/ai-sessions',c.listAiSessions);router.post('/ai-sessions',c.createAiSession);router.get('/ai-sessions/:id',c.getAiSession);router.post('/ai-sessions/:id/messages',c.saveAiMessages);
+router.get('/communication-contacts',role('student','faculty'),c.listCommunicationContacts);
 router.get('/messages',role('student','faculty'),c.listMessages);router.post('/messages',role('student','faculty'),c.sendMessage);router.patch('/messages/:id/read',role('student','faculty'),c.markMessageRead);
 router.get('/help-desk',c.listTickets);router.post('/help-desk',c.createTicket);router.patch('/help-desk/:id',role('admin'),c.updateTicket);
+router.get('/feedback',role('student','faculty','admin'),c.listFeedback);
+router.post('/feedback',role('student','faculty'),c.createFeedback);
 router.get('/notification-preferences',c.preferences);router.put('/notification-preferences',c.preferences);
 module.exports=router;
