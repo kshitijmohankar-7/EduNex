@@ -12,6 +12,7 @@ import './styles/immersive-shell.css';
 import './styles/feature-menu.css';
 import './styles/menu-only-shell.css';
 import './styles/leave.css';
+import './styles/campus-services.css';
 import './styles/advanced-features.css';
 import './styles/ai-tools.css';
 import './styles/theme-overrides.css';
