@@ -29,6 +29,7 @@ const phase3Routes = require('./routes/phase3Routes');
 const timetableRoutes = require('./routes/timetableRoutes');
 const leaveRoutes = require('./routes/leaveRoutes');
 const platformRoutes = require('./routes/platformRoutes');
+const examScheduleRoutes = require('./routes/examScheduleRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -126,6 +127,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/question-banks', questionBankRoutes);
 app.use('/api/leave', leaveRoutes);
 app.use('/api/platform', platformRoutes);
+app.use('/api/exam-schedule', examScheduleRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found', requestId: req.requestId });
