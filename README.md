@@ -9,7 +9,7 @@ EduNex is a full-stack college management and student-success platform for **stu
 - **Database:** PostgreSQL 18
 - **AI service:** Python + FastAPI
 - **AI:** Gemini + Chroma RAG over study materials
-- **Uploads:** local filesystem with legacy-path compatibility
+- **Uploads:** Supabase Storage (with legacy local-path compatibility for development)
 
 ## Implemented phases
 
@@ -189,7 +189,7 @@ EduNex is structured for a split production deployment:
 - **API:** Node/Express service using `server/`
 - **AI:** FastAPI service using `ai-service/`
 - **Database:** Managed PostgreSQL
-- **Files:** Persistent object storage or a persistent server disk; do not rely on ephemeral application filesystems for production uploads.
+- **Files:** Supabase Storage bucket `edunex-files`; the production Render API uses `STORAGE_MODE=supabase`.
 - **RAG:** Persistent storage is required for the Chroma database.
 
 ### Production environment variables
@@ -229,6 +229,10 @@ Use the existing `ai-service/.env.example` and set the production Gemini key/mod
 
 Gemini is an enhancement, not a single point of failure. EduNex now caches Gemini quota exhaustion temporarily and uses database/direct-answer, RAG and deterministic offline fallbacks where applicable. This prevents repeated frontend requests from hammering an exhausted free-tier quota.
 
-### Important production limitation
+### Production deployment notes
 
-The current upload implementation writes files to `uploads/`. For a multi-instance or ephemeral deployment, migrate this layer to object storage (S3-compatible storage, Supabase Storage, or the hosting provider's persistent disk) before treating uploaded academic documents as production data.
+The repository now includes `render.yaml` for the Node API and FastAPI AI service. The API uses Supabase Postgres and Supabase Storage in production. The AI service uses a persistent Render disk for Chroma because the RAG vector store must survive service restarts and deploys.
+
+For Vercel, set the frontend project root to `client/`, build with `npm run build`, and set `VITE_API_BASE_URL` to the deployed Render API URL ending in `/api`.
+
+The Render blueprint intentionally leaves secrets such as `DATABASE_URL`, `JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `CLIENT_URL`, and `AI_SERVICE_URL` as dashboard-provided values. Never commit these secrets.
