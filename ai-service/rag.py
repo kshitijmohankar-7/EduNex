@@ -3,7 +3,7 @@ EduNex Retrieval-Augmented Generation (RAG) engine.
 
 Pipeline:
   uploaded PDF/DOC/DOCX -> text extraction -> chunking -> Gemini embeddings
-  -> Supabase PostgreSQL JSONB vector store -> semantic retrieval -> Gemini answer
+  -> Supabase REST/JSONB vector store -> semantic retrieval -> Gemini answer
 
 The vector store contains course-material chunks only. Student dashboard
 authorization remains in the Node backend.
@@ -15,14 +15,14 @@ the AI service can run on Render's Free plan, whose filesystem is ephemeral.
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib import error, parse, request as urlrequest
 
-import psycopg
-from psycopg.types.json import Jsonb
 from docx import Document
 from google import genai
 from google.genai import types
@@ -34,22 +34,52 @@ EMBEDDING_DIMENSIONS = int(os.getenv("GEMINI_EMBEDDING_DIMENSIONS", "768"))
 COLLECTION_NAME = os.getenv("RAG_COLLECTION_NAME", "ai_rag_chunks")
 
 
-def _database_url() -> str:
-    value = (
-        os.getenv("SUPABASE_DATABASE_URL", "").strip()
-        or os.getenv("DATABASE_URL", "").strip()
+def _supabase_config() -> tuple[str, str]:
+    base = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+    key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        or os.getenv("SUPABASE_SECRET_KEY", "").strip()
     )
-    if not value:
-        raise RuntimeError("SUPABASE_DATABASE_URL or DATABASE_URL is not configured")
-    return value
+    if not base or not key:
+        raise RuntimeError(
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for RAG storage"
+        )
+    return base, key
 
 
-def _db_connection():
-    return psycopg.connect(
-        _database_url(),
-        sslmode="require",
-        connect_timeout=10,
-    )
+def _supabase_request(
+    method: str,
+    path: str,
+    payload: Any = None,
+    query: Optional[Dict[str, str]] = None,
+) -> Any:
+    base, key = _supabase_config()
+    url = f"{base}/rest/v1/{path.lstrip('/')}"
+    if query:
+        url = f"{url}?{parse.urlencode(query)}"
+
+    body = None
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+
+    req = urlrequest.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urlrequest.urlopen(req, timeout=15) as response:
+            raw = response.read().decode("utf-8")
+            if not raw:
+                return None
+            return json.loads(raw)
+    except error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(
+            f"Supabase RAG request failed ({exc.code}): {body_text[:500]}"
+        ) from exc
 
 
 def _gemini_client():
@@ -143,34 +173,26 @@ def index_document(subject_id: int, title: str, text: str) -> int:
     if len(embeddings) != len(chunks):
         raise RuntimeError("Embedding count does not match chunk count")
 
+    _supabase_request(
+        "DELETE",
+        COLLECTION_NAME,
+        query={"document_key": f"eq.{document_key}"},
+    )
+
     rows = [
-        (
-            f"{document_key}-{i}",
-            int(subject_id),
-            title,
-            document_key,
-            i,
-            chunk,
-            Jsonb(embedding),
-        )
+        {
+            "id": f"{document_key}-{i}",
+            "subject_id": int(subject_id),
+            "title": title,
+            "document_key": document_key,
+            "chunk_index": i,
+            "content": chunk,
+            "embedding": embedding,
+        }
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings))
     ]
 
-    with _db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM public.ai_rag_chunks WHERE document_key = %s",
-                (document_key,),
-            )
-            cur.executemany(
-                """
-                INSERT INTO public.ai_rag_chunks
-                    (id, subject_id, title, document_key, chunk_index, content, embedding)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """,
-                rows,
-            )
-
+    _supabase_request("POST", COLLECTION_NAME, payload=rows)
     return len(chunks)
 
 
@@ -218,40 +240,29 @@ def retrieve_materials(
     query_embedding = _embed_query(question)
     limit = max(1, min(top_k, 10))
 
-    with _db_connection() as conn:
-        with conn.cursor() as cur:
-            if subject_id is None:
-                cur.execute(
-                    """
-                    SELECT title, subject_id, chunk_index, content, embedding
-                    FROM public.ai_rag_chunks
-                    """
-                )
-            else:
-                cur.execute(
-                    """
-                    SELECT title, subject_id, chunk_index, content, embedding
-                    FROM public.ai_rag_chunks
-                    WHERE subject_id = %s
-                    """,
-                    (int(subject_id),),
-                )
-            rows = cur.fetchall()
+    query = {
+        "select": "title,subject_id,chunk_index,content,embedding",
+        "order": "chunk_index.asc",
+    }
+    if subject_id is not None:
+        query["subject_id"] = f"eq.{int(subject_id)}"
+
+    rows = _supabase_request("GET", COLLECTION_NAME, query=query) or []
 
     scored: List[Dict[str, Any]] = []
-    for title, row_subject_id, chunk_index, content, embedding in rows:
-        vector = embedding
+    for row in rows:
+        vector = row.get("embedding") or []
         if isinstance(vector, str):
-            import json
             vector = json.loads(vector)
-        score = _cosine_similarity(query_embedding, list(vector or []))
+
+        score = _cosine_similarity(query_embedding, list(vector))
         if score >= 0:
             scored.append(
                 {
-                    "text": content,
-                    "title": title,
-                    "subject_id": row_subject_id,
-                    "chunk_index": chunk_index,
+                    "text": row.get("content", ""),
+                    "title": row.get("title", "Study material"),
+                    "subject_id": row.get("subject_id"),
+                    "chunk_index": row.get("chunk_index", 0),
                     "distance": 1.0 - score,
                     "similarity": score,
                 }
@@ -279,15 +290,16 @@ def answer_from_materials(
 
 def collection_stats() -> Dict[str, Any]:
     """Return RAG store statistics without depending on local filesystem state."""
-    with _db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM public.ai_rag_chunks")
-            count = cur.fetchone()[0]
+    rows = _supabase_request(
+        "GET",
+        COLLECTION_NAME,
+        query={"select": "id"},
+    ) or []
 
     return {
         "collection": COLLECTION_NAME,
-        "chunks": count,
+        "chunks": len(rows),
         "embedding_model": EMBEDDING_MODEL,
         "embedding_dimensions": EMBEDDING_DIMENSIONS,
-        "storage": "supabase_postgres",
+        "storage": "supabase_postgres_jsonb",
     }
