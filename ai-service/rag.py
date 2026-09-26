@@ -3,39 +3,53 @@ EduNex Retrieval-Augmented Generation (RAG) engine.
 
 Pipeline:
   uploaded PDF/DOC/DOCX -> text extraction -> chunking -> Gemini embeddings
-  -> Chroma persistent vector store -> semantic retrieval -> Gemini answer
+  -> Supabase PostgreSQL JSONB vector store -> semantic retrieval -> Gemini answer
 
 The vector store contains course-material chunks only. Student dashboard
 authorization remains in the Node backend.
+
+This implementation intentionally avoids a local Chroma/PersistentClient so
+the AI service can run on Render's Free plan, whose filesystem is ephemeral.
 """
 
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import chromadb
+import psycopg
+from psycopg.types.json import Jsonb
 from docx import Document
 from google import genai
 from google.genai import types
 from pypdf import PdfReader
 
 
-CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_store")
-# v2 avoids mixing older 384-dimensional sentence-transformer data with the
-# new Gemini 768-dimensional embedding space.
-COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "study_materials_v2")
 EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
 EMBEDDING_DIMENSIONS = int(os.getenv("GEMINI_EMBEDDING_DIMENSIONS", "768"))
+COLLECTION_NAME = os.getenv("RAG_COLLECTION_NAME", "ai_rag_chunks")
 
-_client = chromadb.PersistentClient(path=CHROMA_PATH)
-_collection = _client.get_or_create_collection(
-    name=COLLECTION_NAME,
-    metadata={"hnsw:space": "cosine"},
-)
+
+def _database_url() -> str:
+    value = (
+        os.getenv("SUPABASE_DATABASE_URL", "").strip()
+        or os.getenv("DATABASE_URL", "").strip()
+    )
+    if not value:
+        raise RuntimeError("SUPABASE_DATABASE_URL or DATABASE_URL is not configured")
+    return value
+
+
+def _db_connection():
+    return psycopg.connect(
+        _database_url(),
+        sslmode="require",
+        connect_timeout=10,
+    )
 
 
 def _gemini_client():
@@ -106,40 +120,57 @@ def _document_key(subject_id: int, title: str) -> str:
     return hashlib.sha1(raw).hexdigest()[:20]
 
 
+def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return -1.0
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0 or norm_b == 0:
+        return -1.0
+    return dot / (norm_a * norm_b)
+
+
 def index_document(subject_id: int, title: str, text: str) -> int:
-    """Replace an existing material in Chroma and index its chunks."""
+    """Replace an existing material in Supabase and index its chunks."""
     chunks = chunk_text(text)
     if not chunks:
         return 0
 
     document_key = _document_key(subject_id, title)
-
-    existing = _collection.get(where={"document_key": document_key})
-    existing_ids = existing.get("ids", []) if existing else []
-    if existing_ids:
-        _collection.delete(ids=existing_ids)
-
     embeddings = _embed_documents(chunks)
+
     if len(embeddings) != len(chunks):
         raise RuntimeError("Embedding count does not match chunk count")
 
-    ids = [f"{document_key}-{i}" for i in range(len(chunks))]
-    metadatas = [
-        {
-            "subject_id": int(subject_id),
-            "title": title,
-            "document_key": document_key,
-            "chunk_index": i,
-        }
-        for i in range(len(chunks))
+    rows = [
+        (
+            f"{document_key}-{i}",
+            int(subject_id),
+            title,
+            document_key,
+            i,
+            chunk,
+            Jsonb(embedding),
+        )
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings))
     ]
 
-    _collection.add(
-        ids=ids,
-        embeddings=embeddings,
-        documents=chunks,
-        metadatas=metadatas,
-    )
+    with _db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM public.ai_rag_chunks WHERE document_key = %s",
+                (document_key,),
+            )
+            cur.executemany(
+                """
+                INSERT INTO public.ai_rag_chunks
+                    (id, subject_id, title, document_key, chunk_index, content, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                rows,
+            )
+
     return len(chunks)
 
 
@@ -164,7 +195,10 @@ def extract_text_from_file(file_path: str) -> str:
         return "\n\n".join(paragraphs).strip()
 
     if suffix == ".doc":
-        raise ValueError("Legacy .doc files are not supported for automatic text extraction. Convert it to .docx or PDF.")
+        raise ValueError(
+            "Legacy .doc files are not supported for automatic text extraction. "
+            "Convert it to .docx or PDF."
+        )
 
     return path.read_text(encoding="utf-8", errors="ignore").strip()
 
@@ -180,42 +214,58 @@ def retrieve_materials(
     subject_id: Optional[int] = None,
     top_k: int = 6,
 ) -> List[Dict[str, Any]]:
-    """Return the most relevant study-material chunks for a question."""
-    if _collection.count() == 0:
-        return []
-
+    """Return the most relevant study-material chunks using cosine similarity."""
     query_embedding = _embed_query(question)
-    where = {"subject_id": int(subject_id)} if subject_id is not None else None
+    limit = max(1, min(top_k, 10))
 
-    results = _collection.query(
-        query_embeddings=[query_embedding],
-        n_results=max(1, min(top_k, 10)),
-        where=where,
-        include=["documents", "metadatas", "distances"],
-    )
+    with _db_connection() as conn:
+        with conn.cursor() as cur:
+            if subject_id is None:
+                cur.execute(
+                    """
+                    SELECT title, subject_id, chunk_index, content, embedding
+                    FROM public.ai_rag_chunks
+                    """
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT title, subject_id, chunk_index, content, embedding
+                    FROM public.ai_rag_chunks
+                    WHERE subject_id = %s
+                    """,
+                    (int(subject_id),),
+                )
+            rows = cur.fetchall()
 
-    documents = results.get("documents", [[]])[0]
-    metadatas = results.get("metadatas", [[]])[0]
-    distances = results.get("distances", [[]])[0]
+    scored: List[Dict[str, Any]] = []
+    for title, row_subject_id, chunk_index, content, embedding in rows:
+        vector = embedding
+        if isinstance(vector, str):
+            import json
+            vector = json.loads(vector)
+        score = _cosine_similarity(query_embedding, list(vector or []))
+        if score >= 0:
+            scored.append(
+                {
+                    "text": content,
+                    "title": title,
+                    "subject_id": row_subject_id,
+                    "chunk_index": chunk_index,
+                    "distance": 1.0 - score,
+                    "similarity": score,
+                }
+            )
 
-    retrieved: List[Dict[str, Any]] = []
-    for index, document in enumerate(documents):
-        metadata = metadatas[index] if index < len(metadatas) else {}
-        distance = distances[index] if index < len(distances) else None
-        retrieved.append(
-            {
-                "text": document,
-                "title": metadata.get("title", "Study material"),
-                "subject_id": metadata.get("subject_id"),
-                "chunk_index": metadata.get("chunk_index", 0),
-                "distance": distance,
-            }
-        )
-
-    return retrieved
+    scored.sort(key=lambda item: item["similarity"], reverse=True)
+    return scored[:limit]
 
 
-def answer_from_materials(question: str, subject_id: int = None, top_k: int = 6) -> str:
+def answer_from_materials(
+    question: str,
+    subject_id: int = None,
+    top_k: int = 6,
+) -> str:
     """Compatibility helper returning retrieved text as a grounded context block."""
     chunks = retrieve_materials(question, subject_id=subject_id, top_k=top_k)
     if not chunks:
@@ -228,10 +278,16 @@ def answer_from_materials(question: str, subject_id: int = None, top_k: int = 6)
 
 
 def collection_stats() -> Dict[str, Any]:
+    """Return RAG store statistics without depending on local filesystem state."""
+    with _db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM public.ai_rag_chunks")
+            count = cur.fetchone()[0]
+
     return {
         "collection": COLLECTION_NAME,
-        "chunks": _collection.count(),
+        "chunks": count,
         "embedding_model": EMBEDDING_MODEL,
         "embedding_dimensions": EMBEDDING_DIMENSIONS,
-        "chroma_path": CHROMA_PATH,
+        "storage": "supabase_postgres",
     }
