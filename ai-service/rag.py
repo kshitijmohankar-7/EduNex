@@ -19,6 +19,8 @@ import json
 import math
 import os
 import re
+import random
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib import error, parse, request as urlrequest
@@ -110,7 +112,7 @@ def chunk_text(text: str, chunk_size: int = 700, overlap: int = 100) -> List[str
 
 
 def _embed_documents(texts: List[str]) -> List[List[float]]:
-    """Create retrieval-document embeddings in batches using Gemini Embeddings."""
+    """Create retrieval-document embeddings with bounded 429/5xx retries."""
     if not texts:
         return []
 
@@ -119,30 +121,77 @@ def _embed_documents(texts: List[str]) -> List[List[float]]:
 
     for start in range(0, len(texts), 50):
         batch = texts[start : start + 50]
-        result = client.models.embed_content(
-            model=EMBEDDING_MODEL,
-            contents=batch,
-            config=types.EmbedContentConfig(
-                task_type="RETRIEVAL_DOCUMENT",
-                output_dimensionality=EMBEDDING_DIMENSIONS,
-            ),
-        )
-        embeddings.extend([list(item.values) for item in result.embeddings])
+        last_error = None
+
+        for attempt in range(4):
+            try:
+                result = client.models.embed_content(
+                    model=EMBEDDING_MODEL,
+                    contents=batch,
+                    config=types.EmbedContentConfig(
+                        task_type="RETRIEVAL_DOCUMENT",
+                        output_dimensionality=EMBEDDING_DIMENSIONS,
+                    ),
+                )
+                embeddings.extend([list(item.values) for item in result.embeddings])
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                message = str(exc).lower()
+                retryable = any(
+                    marker in message
+                    for marker in ("429", "resource_exhausted", "503", "unavailable", "too many requests")
+                )
+                if not retryable or attempt == 3:
+                    raise
+
+                delay = min(8.0, 1.5 * (2 ** attempt)) + random.uniform(0, 0.75)
+                print(
+                    f"Gemini embedding retry {attempt + 1}/4 in {delay:.2f}s "
+                    f"for {EMBEDDING_MODEL}: {str(exc)[:500]}"
+                )
+                time.sleep(delay)
+
+        if last_error is not None:
+            raise last_error
 
     return embeddings
 
 
 def _embed_query(question: str) -> List[float]:
     client = _gemini_client()
-    result = client.models.embed_content(
-        model=EMBEDDING_MODEL,
-        contents=[question],
-        config=types.EmbedContentConfig(
-            task_type="RETRIEVAL_QUERY",
-            output_dimensionality=EMBEDDING_DIMENSIONS,
-        ),
-    )
-    return list(result.embeddings[0].values)
+    last_error = None
+
+    for attempt in range(4):
+        try:
+            result = client.models.embed_content(
+                model=EMBEDDING_MODEL,
+                contents=[question],
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_QUERY",
+                    output_dimensionality=EMBEDDING_DIMENSIONS,
+                ),
+            )
+            return list(result.embeddings[0].values)
+        except Exception as exc:
+            last_error = exc
+            message = str(exc).lower()
+            retryable = any(
+                marker in message
+                for marker in ("429", "resource_exhausted", "503", "unavailable", "too many requests")
+            )
+            if not retryable or attempt == 3:
+                raise
+
+            delay = min(6.0, 1.0 * (2 ** attempt)) + random.uniform(0, 0.5)
+            print(
+                f"Gemini query embedding retry {attempt + 1}/4 in {delay:.2f}s "
+                f"for {EMBEDDING_MODEL}: {str(exc)[:500]}"
+            )
+            time.sleep(delay)
+
+    raise last_error
 
 
 def _document_key(subject_id: int, title: str) -> str:
