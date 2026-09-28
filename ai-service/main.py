@@ -191,7 +191,7 @@ def _parse_retry_after_seconds(response_body: str) -> Optional[int]:
 
 
 def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
-    """Call Gemini with transient-capacity retries and a current stable model fallback chain."""
+    """Call Gemini with bounded retries and model fallback for quota/capacity errors."""
     api_key = (
         os.getenv("GEMINI_API_KEY", "").strip()
         or os.getenv("GOOGLE_API_KEY", "").strip()
@@ -201,11 +201,12 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
         return None, "not_configured", None
 
     configured = os.getenv("GEMINI_MODEL", "").strip()
-    # Keep the configured model first, then use currently documented stable
-    # Flash models. Lite models are included as lower-capacity fallbacks.
+    # Try the configured model first, then stable models with separate model
+    # quotas/capacity. Google documents these as current Gemini 3 stable models.
     models = [configured] if configured else []
     for candidate_model in (
         "gemini-3.8-flash",
+        "gemini-3.7-flash",
         "gemini-3.5-flash-lite",
         "gemini-3.6-flash",
         "gemini-3.5-flash",
@@ -217,11 +218,9 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
     is_json_request = "return ONLY valid JSON" in prompt or "valid JSON array" in prompt
     last_status = "http_error"
     last_retry = None
+    saw_quota_error = False
 
     import time
-    global _gemini_quota_blocked_until
-    if _gemini_quota_blocked_until > time.time():
-        return None, "quota_exhausted", max(1, int(_gemini_quota_blocked_until - time.time()))
 
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -251,12 +250,9 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
             method="POST",
         )
 
-        # HTTP 503 means temporary service capacity/unavailability. Google
-        # recommends retrying after a short wait; do that before abandoning
-        # a model so transient capacity spikes do not force offline mode.
-        for attempt in range(2):
+        for attempt in range(3):
             try:
-                with urlrequest.urlopen(req, timeout=12) as response:
+                with urlrequest.urlopen(req, timeout=15) as response:
                     data = json.loads(response.read().decode("utf-8"))
 
                 candidates = data.get("candidates", [])
@@ -311,26 +307,25 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
                     return None, "auth_error", None
 
                 if exc.code == 429:
-                    # A daily free-tier quota should not be hammered on every
-                    # frontend request. Cache the blocked state for the retry
-                    # interval, with a conservative 60-minute floor.
-                    block_seconds = max(retry_after or 0, 3600)
-                    _gemini_quota_blocked_until = time.time() + block_seconds
-                    print(f"Gemini quota/rate-limit error on {model}: {response_body[:1200]}")
-                    return None, "quota_exhausted", retry_after
+                    # A 429 can be model-specific. Do not stop after the first
+                    # exhausted model; try the next stable model instead.
+                    saw_quota_error = True
+                    last_status = "quota_exhausted"
+                    print(
+                        f"Gemini quota/rate-limit error on {model}; "
+                        f"trying next model: {response_body[:1000]}"
+                    )
+                    break
 
                 if exc.code == 503:
-                    # Exponential backoff: 2s, 4s, 8s unless Google's
-                    # response supplies a more specific retry interval.
-                    wait_seconds = retry_after or 2
+                    wait_seconds = retry_after or min(2 ** attempt, 8)
                     print(
                         f"Gemini capacity unavailable on {model} (HTTP 503), "
                         f"retry {attempt + 1}/3 in {wait_seconds}s."
                     )
                     last_status = "service_unavailable"
                     if attempt < 2:
-                        import time
-                        time.sleep(min(wait_seconds, 3))
+                        time.sleep(min(wait_seconds, 8))
                         continue
                     break
 
@@ -355,6 +350,8 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
                 last_status = "parse_error"
                 break
 
+    if saw_quota_error:
+        return None, "quota_exhausted", last_retry
     return None, last_status, last_retry
 
 def educational_fallback(message: str) -> str | None:
