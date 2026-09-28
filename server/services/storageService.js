@@ -95,7 +95,7 @@ async function downloadUpload(filePath) {
   const key = storageKeyFromPath(filePath);
   if (useSupabase()) {
     assertSupabaseConfig();
-    const response = await fetch(`${supabaseUrl}/storage/v1/object/download/${encodeURIComponent(bucket)}/${key.split('/').map(encodeURIComponent).join('/')}`, {
+    const response = await fetch(`${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${key.split('/').map(encodeURIComponent).join('/')}`, {
       headers: { Authorization: `Bearer ${supabaseKey}`, apikey: supabaseKey },
     });
     if (!response.ok) {
