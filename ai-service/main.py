@@ -205,12 +205,8 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
     # quotas/capacity. Google documents these as current Gemini 3 stable models.
     models = [configured] if configured else []
     for candidate_model in (
-        "gemini-3.8-flash",
-        "gemini-3.7-flash",
         "gemini-3.5-flash-lite",
         "gemini-3.6-flash",
-        "gemini-3.5-flash",
-        "gemini-3.1-flash-lite",
     ):
         if candidate_model not in models:
             models.append(candidate_model)
@@ -252,7 +248,7 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
 
         for attempt in range(3):
             try:
-                with urlrequest.urlopen(req, timeout=15) as response:
+                with urlrequest.urlopen(req, timeout=7) as response:
                     data = json.loads(response.read().decode("utf-8"))
 
                 candidates = data.get("candidates", [])
@@ -318,15 +314,11 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
                     break
 
                 if exc.code == 503:
-                    wait_seconds = retry_after or min(2 ** attempt, 8)
                     print(
-                        f"Gemini capacity unavailable on {model} (HTTP 503), "
-                        f"retry {attempt + 1}/3 in {wait_seconds}s."
+                        f"Gemini capacity unavailable on {model} (HTTP 503); "
+                        "trying the next model without blocking the student request."
                     )
                     last_status = "service_unavailable"
-                    if attempt < 2:
-                        time.sleep(min(wait_seconds, 8))
-                        continue
                     break
 
                 if exc.code in (400, 404):
@@ -462,7 +454,29 @@ def _make_readable_paragraphs(text: str, max_sentences: int = 5) -> List[str]:
 
 def offline_general_fallback(message: str) -> Optional[str]:
     """Useful deterministic answers for common academic questions when Gemini is unavailable."""
-    text = str(message or "").lower()
+    text = str(message or "").lower().strip()
+
+    if text in {
+        "what is ai", "what is artificial intelligence",
+        "define ai", "define artificial intelligence",
+        "what do you mean by ai",
+    }:
+        return """## What is AI?
+
+**AI (Artificial Intelligence)** is a branch of computer science that enables computers to perform tasks that normally require human intelligence.
+
+### Examples
+- Understanding text and speech
+- Recognizing images
+- Learning from data
+- Making predictions or decisions
+- Generating text, images, or code
+
+### Simple example
+When EduNex AI understands your question and generates an explanation, it is using AI to process the question and produce a useful response.
+
+In short, **AI makes computers capable of performing intelligent tasks.**"""
+
     if "inheritance" in text and "java" in text:
         return """## Java Inheritance
 
