@@ -371,7 +371,9 @@ Please do not include personal student data, real credentials, private uploaded 
 
 ## 📄 License
 
-No license file was confirmed as part of this README update. Unless a license is added to the repository, reuse and redistribution remain subject to the repository owner's rights.
+EduNex is licensed under the **MIT License**. You may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of the software, provided that the copyright notice and permission notice are included in copies or substantial portions of the software.
+
+The software is provided **“as is”**, without warranty of any kind. See the full [MIT License](LICENSE) for the terms.
 
 ---
 
