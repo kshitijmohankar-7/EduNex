@@ -206,7 +206,7 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
     models = []
     for candidate in (
         configured,
-        "gemini-2.5-flash",
+        "gemini-3.5-flash-lite",
     ):
         if candidate and candidate not in models:
             models.append(candidate)
@@ -238,7 +238,7 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
         )
 
         try:
-            with urlrequest.urlopen(req, timeout=12) as response:
+            with urlrequest.urlopen(req, timeout=8) as response:
                 data = json.loads(response.read().decode("utf-8"))
 
             candidates = data.get("candidates", [])
@@ -302,9 +302,9 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
         except (error.URLError, TimeoutError, OSError) as exc:
             print(f"Gemini connection/timeout error on {model}: {exc}")
             last_status = "connection_error"
-            # Do not chain more network waits after a timeout; let the existing
-            # offline fallback answer promptly.
-            break
+            # Try the one configured fallback model after a timeout. The loop is
+            # bounded to two models, each with an 8-second network timeout.
+            continue
 
         except (ValueError, json.JSONDecodeError) as exc:
             print(f"Gemini response parsing error on {model}: {exc}")
