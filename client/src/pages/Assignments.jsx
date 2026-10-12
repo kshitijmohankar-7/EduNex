@@ -75,7 +75,7 @@ export default function Assignments() {
 
     // Storage may return a signed HTTPS URL. Open it directly instead of
     // incorrectly rewriting it into a local /uploads path.
-    if (/^https?:\\/\\//i.test(String(filePath))) {
+    if (/^https?:\/\//i.test(String(filePath))) {
       window.open(filePath, '_blank', 'noopener,noreferrer');
       return;
     }
