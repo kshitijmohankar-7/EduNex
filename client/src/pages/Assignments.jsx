@@ -69,11 +69,14 @@ export default function Assignments() {
   function openAssignment(filePath) {
 
     if (!filePath) {
+      alert('Assignment file is not available.');
+      return;
+    }
 
-      alert(
-        'Assignment file is not available.'
-      );
-
+    // Storage may return a signed HTTPS URL. Open it directly instead of
+    // incorrectly rewriting it into a local /uploads path.
+    if (/^https?:\\/\\//i.test(String(filePath))) {
+      window.open(filePath, '_blank', 'noopener,noreferrer');
       return;
     }
 
