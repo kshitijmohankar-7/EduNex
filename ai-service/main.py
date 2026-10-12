@@ -206,8 +206,6 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
     models = []
     for candidate in (
         configured,
-        "gemini-3.5-flash-lite",
-        "gemini-3.6-flash",
         "gemini-2.5-flash",
     ):
         if candidate and candidate not in models:
@@ -239,84 +237,79 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
             method="POST",
         )
 
-        # One bounded retry for transient server capacity errors. Quota/model
-        # errors move to the next model rather than wasting the user's wait.
-        for attempt in range(2):
-            try:
-                with urlrequest.urlopen(req, timeout=30) as response:
-                    data = json.loads(response.read().decode("utf-8"))
+        try:
+            with urlrequest.urlopen(req, timeout=12) as response:
+                data = json.loads(response.read().decode("utf-8"))
 
-                candidates = data.get("candidates", [])
-                if not candidates:
-                    print(f"Gemini {model} returned no candidates.")
-                    last_status = "empty"
-                    break
-
-                candidate = candidates[0]
-                parts = candidate.get("content", {}).get("parts", [])
-                answer = "".join(
-                    part.get("text", "")
-                    for part in parts
-                    if isinstance(part, dict) and not part.get("thought")
-                ).strip()
-                if answer:
-                    print(f"Gemini response generated with {model}.")
-                    return answer, "ok", None
-
-                print(f"Gemini {model} returned an empty response; finishReason={candidate.get('finishReason')}")
+            candidates = data.get("candidates", [])
+            if not candidates:
+                print(f"Gemini {model} returned no candidates.")
                 last_status = "empty"
-                break
+                continue
 
-            except error.HTTPError as exc:
-                try:
-                    response_body = exc.read().decode("utf-8", errors="replace")
-                except Exception:
-                    response_body = "<unable to read error response>"
+            candidate = candidates[0]
+            parts = candidate.get("content", {}).get("parts", [])
+            answer = "".join(
+                part.get("text", "")
+                for part in parts
+                if isinstance(part, dict) and not part.get("thought")
+            ).strip()
+            if answer:
+                print(f"Gemini response generated with {model}.")
+                return answer, "ok", None
 
-                last_retry = _parse_retry_after_seconds(response_body)
-                lower_body = response_body.lower()
+            print(f"Gemini {model} returned an empty response; finishReason={candidate.get('finishReason')}")
+            last_status = "empty"
 
-                if exc.code in (401, 403) or (
-                    exc.code == 400 and any(term in lower_body for term in (
-                        "api key not valid", "api key is invalid", "authentication",
-                        "permission denied", "unauthorized",
-                    ))
-                ):
-                    print(f"Gemini authentication/permission error (HTTP {exc.code}): {response_body[:1000]}")
-                    return None, "auth_error", None
+        except error.HTTPError as exc:
+            try:
+                response_body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                response_body = "<unable to read error response>"
 
-                if exc.code == 429:
-                    saw_quota_error = True
-                    last_status = "quota_exhausted"
-                    print(f"Gemini quota/rate-limit on {model}; trying fallback model: {response_body[:700]}")
-                    break
+            last_retry = _parse_retry_after_seconds(response_body)
+            lower_body = response_body.lower()
 
-                if exc.code in (503, 500, 502, 504):
-                    last_status = "service_unavailable"
-                    if attempt == 0:
-                        import time
-                        time.sleep(1)
-                        continue
-                    print(f"Gemini capacity/server error on {model} (HTTP {exc.code}); trying fallback model.")
-                    break
+            if exc.code in (401, 403) or (
+                exc.code == 400 and any(term in lower_body for term in (
+                    "api key not valid", "api key is invalid", "authentication",
+                    "permission denied", "unauthorized",
+                ))
+            ):
+                print(f"Gemini authentication/permission error (HTTP {exc.code}): {response_body[:1000]}")
+                return None, "auth_error", None
 
-                if exc.code in (400, 404):
-                    last_status = "model_unavailable"
-                    print(f"Gemini model {model} unavailable (HTTP {exc.code}); trying fallback model: {response_body[:500]}")
-                    break
+            if exc.code == 429:
+                saw_quota_error = True
+                last_status = "quota_exhausted"
+                print(f"Gemini quota/rate-limit on {model}; trying fallback model: {response_body[:500]}")
+                continue
 
-                print(f"Gemini HTTP error {exc.code} on {model}: {response_body[:700]}")
-                last_status = "http_error"
-                break
+            if exc.code in (503, 500, 502, 504):
+                last_status = "service_unavailable"
+                print(f"Gemini capacity/server error on {model} (HTTP {exc.code}); trying fallback model.")
+                continue
 
-            except (error.URLError, TimeoutError, OSError) as exc:
-                print(f"Gemini connection error on {model}: {exc}")
-                last_status = "connection_error"
-                break
-            except (ValueError, json.JSONDecodeError) as exc:
-                print(f"Gemini response parsing error on {model}: {exc}")
-                last_status = "parse_error"
-                break
+            if exc.code in (400, 404):
+                last_status = "model_unavailable"
+                print(f"Gemini model {model} unavailable (HTTP {exc.code}); trying fallback model: {response_body[:400]}")
+                continue
+
+            print(f"Gemini HTTP error {exc.code} on {model}: {response_body[:500]}")
+            last_status = "http_error"
+            continue
+
+        except (error.URLError, TimeoutError, OSError) as exc:
+            print(f"Gemini connection/timeout error on {model}: {exc}")
+            last_status = "connection_error"
+            # Do not chain more network waits after a timeout; let the existing
+            # offline fallback answer promptly.
+            break
+
+        except (ValueError, json.JSONDecodeError) as exc:
+            print(f"Gemini response parsing error on {model}: {exc}")
+            last_status = "parse_error"
+            break
 
     if saw_quota_error:
         return None, "quota_exhausted", last_retry
