@@ -191,7 +191,7 @@ def _parse_retry_after_seconds(response_body: str) -> Optional[int]:
 
 
 def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
-    """Call Gemini with bounded retries and model fallback for quota/capacity errors."""
+    """Call Gemini with longer network timeout and fallback across supported text models."""
     api_key = (
         os.getenv("GEMINI_API_KEY", "").strip()
         or os.getenv("GOOGLE_API_KEY", "").strip()
@@ -200,33 +200,31 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
         print("Gemini request skipped: GEMINI_API_KEY/GOOGLE_API_KEY is not configured.")
         return None, "not_configured", None
 
-    configured = os.getenv("GEMINI_MODEL", "").strip()
-    # Try the configured model first, then stable models with separate model
-    # quotas/capacity. Google documents these as current Gemini 3 stable models.
-    models = [configured] if configured else []
-    for candidate_model in (
+    configured = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    # Keep the configured model first; try alternate supported text models if
+    # a particular model is unavailable or temporarily at capacity/quota.
+    models = []
+    for candidate in (
+        configured,
         "gemini-3.5-flash-lite",
         "gemini-3.6-flash",
+        "gemini-2.5-flash",
     ):
-        if candidate_model not in models:
-            models.append(candidate_model)
+        if candidate and candidate not in models:
+            models.append(candidate)
 
     is_json_request = "return ONLY valid JSON" in prompt or "valid JSON array" in prompt
     last_status = "http_error"
     last_retry = None
     saw_quota_error = False
 
-    import time
-
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         generation_config = {"maxOutputTokens": 4096}
-
         if model.startswith("gemini-3."):
             generation_config["thinkingConfig"] = {"thinkingLevel": "low"}
-        else:
+        elif model.startswith("gemini-2.5-"):
             generation_config["thinkingConfig"] = {"thinkingBudget": 0}
-
         if is_json_request:
             generation_config["responseMimeType"] = "application/json"
 
@@ -234,21 +232,18 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": generation_config,
         }
-
-        body = json.dumps(payload).encode("utf-8")
         req = urlrequest.Request(
             url,
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": api_key,
-            },
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
             method="POST",
         )
 
-        for attempt in range(3):
+        # One bounded retry for transient server capacity errors. Quota/model
+        # errors move to the next model rather than wasting the user's wait.
+        for attempt in range(2):
             try:
-                with urlrequest.urlopen(req, timeout=7) as response:
+                with urlrequest.urlopen(req, timeout=30) as response:
                     data = json.loads(response.read().decode("utf-8"))
 
                 candidates = data.get("candidates", [])
@@ -259,22 +254,18 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
 
                 candidate = candidates[0]
                 parts = candidate.get("content", {}).get("parts", [])
-                text = "".join(
+                answer = "".join(
                     part.get("text", "")
                     for part in parts
                     if isinstance(part, dict) and not part.get("thought")
                 ).strip()
+                if answer:
+                    print(f"Gemini response generated with {model}.")
+                    return answer, "ok", None
 
-                if not text:
-                    print(
-                        f"Gemini {model} returned an empty response. "
-                        f"finishReason={candidate.get('finishReason')}"
-                    )
-                    last_status = "empty"
-                    break
-
-                print(f"Gemini response generated with {model}.")
-                return text, "ok", None
+                print(f"Gemini {model} returned an empty response; finishReason={candidate.get('finishReason')}")
+                last_status = "empty"
+                break
 
             except error.HTTPError as exc:
                 try:
@@ -282,61 +273,46 @@ def call_gemini(prompt: str) -> Tuple[Optional[str], str, Optional[int]]:
                 except Exception:
                     response_body = "<unable to read error response>"
 
-                retry_after = _parse_retry_after_seconds(response_body)
-                last_retry = retry_after
+                last_retry = _parse_retry_after_seconds(response_body)
                 lower_body = response_body.lower()
 
                 if exc.code in (401, 403) or (
-                    exc.code == 400
-                    and any(term in lower_body for term in (
-                        "api key not valid",
-                        "api key is invalid",
-                        "authentication",
-                        "permission denied",
-                        "unauthorized",
+                    exc.code == 400 and any(term in lower_body for term in (
+                        "api key not valid", "api key is invalid", "authentication",
+                        "permission denied", "unauthorized",
                     ))
                 ):
-                    print(
-                        f"Gemini authentication/permission error on {model} "
-                        f"(HTTP {exc.code}): {response_body[:1200]}"
-                    )
+                    print(f"Gemini authentication/permission error (HTTP {exc.code}): {response_body[:1000]}")
                     return None, "auth_error", None
 
                 if exc.code == 429:
-                    # A 429 can be model-specific. Do not stop after the first
-                    # exhausted model; try the next stable model instead.
                     saw_quota_error = True
                     last_status = "quota_exhausted"
-                    print(
-                        f"Gemini quota/rate-limit error on {model}; "
-                        f"trying next model: {response_body[:1000]}"
-                    )
+                    print(f"Gemini quota/rate-limit on {model}; trying fallback model: {response_body[:700]}")
                     break
 
-                if exc.code == 503:
-                    print(
-                        f"Gemini capacity unavailable on {model} (HTTP 503); "
-                        "trying the next model without blocking the student request."
-                    )
+                if exc.code in (503, 500, 502, 504):
                     last_status = "service_unavailable"
+                    if attempt == 0:
+                        import time
+                        time.sleep(1)
+                        continue
+                    print(f"Gemini capacity/server error on {model} (HTTP {exc.code}); trying fallback model.")
                     break
 
                 if exc.code in (400, 404):
-                    print(
-                        f"Gemini model {model} unavailable ({exc.code}); "
-                        "trying the next supported model."
-                    )
                     last_status = "model_unavailable"
+                    print(f"Gemini model {model} unavailable (HTTP {exc.code}); trying fallback model: {response_body[:500]}")
                     break
 
-                print(f"Gemini HTTP error {exc.code} on {model}: {response_body[:1200]}")
+                print(f"Gemini HTTP error {exc.code} on {model}: {response_body[:700]}")
                 last_status = "http_error"
                 break
 
             except (error.URLError, TimeoutError, OSError) as exc:
                 print(f"Gemini connection error on {model}: {exc}")
-                return None, "connection_error", None
-
+                last_status = "connection_error"
+                break
             except (ValueError, json.JSONDecodeError) as exc:
                 print(f"Gemini response parsing error on {model}: {exc}")
                 last_status = "parse_error"
@@ -618,7 +594,7 @@ def is_rag_question(message: str) -> bool:
 def health():
     result = {
         "status": "ok",
-        "llm_configured": bool(os.getenv("GEMINI_API_KEY")),
+        "llm_configured": bool(os.getenv("GEMINI_API_KEY", "").strip() or os.getenv("GOOGLE_API_KEY", "").strip()),
         "rag_available": RAG_AVAILABLE,
         "gemini_model": os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
     }
