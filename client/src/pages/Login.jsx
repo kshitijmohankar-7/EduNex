@@ -18,7 +18,7 @@ export default function Login() {
   // Warm the API while the user enters credentials; free hosting may sleep when idle.
   useEffect(() => {
     const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
-    fetch(`${baseUrl.replace(/\\/$/, '')}/ready`, { method: 'GET' }).catch(() => {});
+    fetch(`${baseUrl}/ready`, { method: 'GET' }).catch(() => {});
   }, []);
   const { login } = useAuth();
   const navigate = useNavigate();
