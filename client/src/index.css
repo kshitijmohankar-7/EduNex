@@ -253,3 +253,30 @@ table.account-details-table tbody tr:hover { background: rgba(105, 93, 255, 0.03
   table.account-details-table th { width: 38%; }
   table.account-details-table th, table.account-details-table td { padding: 14px 10px; }
 }
+
+
+/* ---------- Login loading and responsive feedback ---------- */
+.login-submit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.login-submit-button:disabled { cursor: wait; opacity: 0.78; }
+.login-submit-button:active:not(:disabled) { transform: translateY(1px); }
+.login-spinner {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: edunex-login-spin 700ms linear infinite;
+}
+@keyframes edunex-login-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .login-spinner { animation-duration: 1.8s; }
+  .login-submit-button { transition: none; }
+}
