@@ -79,20 +79,12 @@ async function getStudentDetails(req, res, next) {
       LEFT JOIN semesters sem ON sem.id = s.current_semester_id
       LEFT JOIN academic_years ay ON ay.id = s.academic_year_id
       WHERE s.id = $1
-        AND EXISTS (
-          SELECT 1
-          FROM faculty_subject_assignments fsa
-          JOIN subjects sub
-            ON sub.id = fsa.subject_id
-           AND sub.semester_id = s.current_semester_id
-          WHERE fsa.faculty_id = (SELECT id FROM faculty WHERE user_id = $2)
-        )
       `,
-      [studentId, req.user.id]
+      [studentId]
     );
 
     if (!studentResult.rows.length) {
-      return res.status(404).json({ error: 'Student not found or not in your assigned subject's semester' });
+      return res.status(404).json({ error: 'Student not found' });
     }
 
     const [attendanceResult, marksResult, assignmentsResult, achievementsResult] = await Promise.all([
