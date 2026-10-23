@@ -15,7 +15,7 @@ async function searchStudents(req, res, next) {
     if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
 
     const search = String(req.query.search || '').trim();
-    const values = [`%${search}%`, faculty.id];
+    const values = [`%${search}%`];
 
     const result = await pool.query(
       `
@@ -29,11 +29,6 @@ async function searchStudents(req, res, next) {
         sem.number AS semester_number
       FROM students s
       JOIN users u ON u.id = s.user_id
-      JOIN faculty_subject_assignments fsa
-        ON fsa.faculty_id = $2
-      JOIN subjects sub
-        ON sub.id = fsa.subject_id
-       AND sub.semester_id = s.current_semester_id
       LEFT JOIN departments d ON d.id = s.department_id
       LEFT JOIN divisions div ON div.id = s.division_id
       LEFT JOIN semesters sem ON sem.id = s.current_semester_id
