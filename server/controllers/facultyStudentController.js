@@ -32,8 +32,11 @@ async function searchStudents(req, res, next) {
       JOIN student_subjects ss
         ON ss.student_id = s.id
        AND ss.status = 'approved'
+      JOIN subjects sub
+        ON sub.id = ss.subject_id
+       AND sub.semester_id = s.current_semester_id
       JOIN faculty_subject_assignments fsa
-        ON fsa.subject_id = ss.subject_id
+        ON fsa.subject_id = sub.id
        AND fsa.faculty_id = $2
       LEFT JOIN departments d ON d.id = s.department_id
       LEFT JOIN divisions div ON div.id = s.division_id
@@ -88,8 +91,11 @@ async function getStudentDetails(req, res, next) {
         AND EXISTS (
           SELECT 1
           FROM student_subjects ss
+          JOIN subjects sub
+            ON sub.id = ss.subject_id
+           AND sub.semester_id = s.current_semester_id
           JOIN faculty_subject_assignments fsa
-            ON fsa.subject_id = ss.subject_id
+            ON fsa.subject_id = sub.id
            AND fsa.faculty_id = (SELECT id FROM faculty WHERE user_id = $2)
           WHERE ss.student_id = s.id
             AND ss.status = 'approved'
@@ -99,7 +105,7 @@ async function getStudentDetails(req, res, next) {
     );
 
     if (!studentResult.rows.length) {
-      return res.status(404).json({ error: 'Student not found or not in your department' });
+      return res.status(404).json({ error: 'Student not found or not in your assigned subject and semester' });
     }
 
     const [attendanceResult, marksResult, assignmentsResult, achievementsResult] = await Promise.all([
