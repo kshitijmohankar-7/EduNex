@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -13,6 +13,13 @@ export default function Login() {
   const [email, setEmail] = useState(ROLE_DEMO_EMAILS.student);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Warm the API while the user enters credentials; free hosting may sleep when idle.
+  useEffect(() => {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+    fetch(`${baseUrl.replace(/\\/$/, '')}/ready`, { method: 'GET' }).catch(() => {});
+  }, []);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -23,6 +30,7 @@ export default function Login() {
 
 async function handleSubmit(e) {
   e.preventDefault();
+  if (isSubmitting) return;
   setError('');
 
   if (!email || !password) {
@@ -30,8 +38,9 @@ async function handleSubmit(e) {
     return;
   }
 
+  setIsSubmitting(true);
   try {
-    const user = await login(email, password);
+    const user = await login(email.trim(), password);
 
     navigate(
       user.role === 'faculty'
@@ -41,7 +50,9 @@ async function handleSubmit(e) {
         : '/dashboard'
     );
   } catch (err) {
-    setError(err.message);
+    setError(err.message || 'Unable to sign in. Please try again.');
+  } finally {
+    setIsSubmitting(false);
   }
 }
 
@@ -70,7 +81,10 @@ async function handleSubmit(e) {
           <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" />
         </div>
 
-        <button type="submit" className="btn" style={{ width: '100%' }}>Sign in</button>
+        <button type="submit" className="btn login-submit-button" style={{ width: '100%' }} disabled={isSubmitting} aria-busy={isSubmitting}>
+          {isSubmitting && <span className="login-spinner" aria-hidden="true" />}
+          <span>{isSubmitting ? 'Signing in…' : 'Sign in'}</span>
+        </button>
         <a href="/forgot-password" style={{display:'block',marginTop:12,textAlign:'center'}}>Forgot password?</a>
       </form>
     </div>
