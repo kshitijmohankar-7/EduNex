@@ -16,6 +16,9 @@ export default function FacultyAssignments() {
   });
 
   const [file, setFile] = useState(null);
+  const [editingDeadlineId, setEditingDeadlineId] = useState(null);
+  const [editedDeadline, setEditedDeadline] = useState('');
+  const [savingDeadline, setSavingDeadline] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [loadingAssignments, setLoadingAssignments] = useState(true);
@@ -255,6 +258,35 @@ export default function FacultyAssignments() {
     if (!deadline) return false;
 
     return new Date(deadline) < new Date();
+  }
+
+  function toDateTimeLocal(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  async function saveDeadline(assignmentId) {
+    if (!editedDeadline) {
+      setError('Please choose a new submission deadline.');
+      return;
+    }
+    setSavingDeadline(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.updateAssignmentDeadline(assignmentId, new Date(editedDeadline).toISOString());
+      setMessage('Assignment submission deadline updated successfully.');
+      setEditingDeadlineId(null);
+      setEditedDeadline('');
+      await loadAssignments();
+    } catch (err) {
+      setError(err.message || 'Could not update the assignment deadline.');
+    } finally {
+      setSavingDeadline(false);
+    }
   }
 
   // ======================================================
@@ -579,23 +611,37 @@ export default function FacultyAssignments() {
                     {/* DEADLINE */}
 
                     <td>
-
-                      <span
-                        className={
-                          `pill ${
-                            isExpired(
-                              assignment.deadline
-                            )
-                              ? 'pill-bad'
-                              : 'pill-warn'
-                          }`
-                        }
-                      >
-                        {formatDate(
-                          assignment.deadline
-                        )}
-                      </span>
-
+                      {editingDeadlineId === assignment.id ? (
+                        <div style={{ minWidth: 220, display: 'grid', gap: 8 }}>
+                          <input
+                            aria-label={`New deadline for ${assignment.title}`}
+                            type="datetime-local"
+                            value={editedDeadline}
+                            onChange={(e) => setEditedDeadline(e.target.value)}
+                          />
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <button type="button" className="btn" disabled={savingDeadline} onClick={() => saveDeadline(assignment.id)}>
+                              {savingDeadline ? 'Saving…' : 'Save date'}
+                            </button>
+                            <button type="button" className="btn btn-outline" disabled={savingDeadline} onClick={() => { setEditingDeadlineId(null); setEditedDeadline(''); }}>
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
+                          <span className={`pill ${isExpired(assignment.deadline) ? 'pill-bad' : 'pill-warn'}`}>
+                            {formatDate(assignment.deadline)}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            onClick={() => { setEditingDeadlineId(assignment.id); setEditedDeadline(toDateTimeLocal(assignment.deadline)); setError(''); setMessage(''); }}
+                          >
+                            Change deadline
+                          </button>
+                        </div>
+                      )}
                     </td>
 
 
