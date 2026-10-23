@@ -15,19 +15,11 @@ async function searchStudents(req, res, next) {
     if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
 
     const search = String(req.query.search || '').trim();
-    if (!search) return res.json([]);
-
-    const values = [`%${search}%`];
-    let departmentFilter = '';
-
-    if (faculty.department_id) {
-      values.push(faculty.department_id);
-      departmentFilter = 'AND s.department_id = $2';
-    }
+    const values = [`%${search}%`, faculty.id, faculty.department_id || null];
 
     const result = await pool.query(
       `
-      SELECT
+      SELECT DISTINCT
         s.id,
         s.student_code,
         u.full_name AS student_name,
@@ -37,17 +29,23 @@ async function searchStudents(req, res, next) {
         sem.number AS semester_number
       FROM students s
       JOIN users u ON u.id = s.user_id
+      JOIN student_subjects ss
+        ON ss.student_id = s.id
+       AND ss.status = 'approved'
+      JOIN faculty_subject_assignments fsa
+        ON fsa.subject_id = ss.subject_id
+       AND fsa.faculty_id = $2
       LEFT JOIN departments d ON d.id = s.department_id
       LEFT JOIN divisions div ON div.id = s.division_id
       LEFT JOIN semesters sem ON sem.id = s.current_semester_id
-      WHERE (
-        u.full_name ILIKE $1
-        OR s.student_code ILIKE $1
-        OR u.email ILIKE $1
-      )
-      ${departmentFilter}
+      WHERE ($3::int IS NULL OR s.department_id = $3)
+        AND (
+          $1 = '%%'
+          OR u.full_name ILIKE $1
+          OR s.student_code ILIKE $1
+          OR u.email ILIKE $1
+        )
       ORDER BY u.full_name ASC
-      LIMIT 20
       `,
       values
     );
