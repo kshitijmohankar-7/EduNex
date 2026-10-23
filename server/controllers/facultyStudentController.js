@@ -15,7 +15,7 @@ async function searchStudents(req, res, next) {
     if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
 
     const search = String(req.query.search || '').trim();
-    const values = [`%${search}%`, faculty.id, faculty.department_id || null];
+    const values = [`%${search}%`, faculty.id];
 
     const result = await pool.query(
       `
@@ -38,8 +38,7 @@ async function searchStudents(req, res, next) {
       LEFT JOIN departments d ON d.id = s.department_id
       LEFT JOIN divisions div ON div.id = s.division_id
       LEFT JOIN semesters sem ON sem.id = s.current_semester_id
-      WHERE ($3::int IS NULL OR s.department_id = $3)
-        AND (
+      WHERE (
           $1 = '%%'
           OR u.full_name ILIKE $1
           OR s.student_code ILIKE $1
@@ -86,9 +85,17 @@ async function getStudentDetails(req, res, next) {
       LEFT JOIN semesters sem ON sem.id = s.current_semester_id
       LEFT JOIN academic_years ay ON ay.id = s.academic_year_id
       WHERE s.id = $1
-        AND ($2::int IS NULL OR s.department_id = $2)
+        AND EXISTS (
+          SELECT 1
+          FROM student_subjects ss
+          JOIN faculty_subject_assignments fsa
+            ON fsa.subject_id = ss.subject_id
+           AND fsa.faculty_id = (SELECT id FROM faculty WHERE user_id = $2)
+          WHERE ss.student_id = s.id
+            AND ss.status = 'approved'
+        )
       `,
-      [studentId, faculty.department_id || null]
+      [studentId, req.user.id]
     );
 
     if (!studentResult.rows.length) {
