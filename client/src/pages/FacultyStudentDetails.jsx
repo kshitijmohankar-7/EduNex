@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 
 export default function FacultyStudentDetails() {
@@ -7,30 +7,36 @@ export default function FacultyStudentDetails() {
   const [selected, setSelected] = useState(null);
   const [details, setDetails] = useState(null);
   const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [error, setError] = useState('');
 
-  async function handleSearch(e) {
-    e?.preventDefault();
-    const value = search.trim();
+  useEffect(() => {
+    loadStudents('');
+  }, []);
+
+  async function loadStudents(query) {
+    const value = String(query ?? '').trim();
     setError('');
     setDetails(null);
     setSelected(null);
-    if (!value) {
-      setResults([]);
-      return;
-    }
-
     try {
       setSearching(true);
       const data = await api.searchFacultyStudents(value);
       setResults(Array.isArray(data) ? data : []);
+      setHasSearched(Boolean(value));
     } catch (err) {
       setError(err.message || 'Failed to search students');
       setResults([]);
+      setHasSearched(Boolean(value));
     } finally {
       setSearching(false);
     }
+  }
+
+  async function handleSearch(e) {
+    e?.preventDefault();
+    await loadStudents(search);
   }
 
   async function selectStudent(student) {
@@ -71,7 +77,7 @@ export default function FacultyStudentDetails() {
         <div>
           <h2>Student Details</h2>
           <p style={{ margin: '6px 0 0', color: 'var(--muted-text)' }}>
-            Search a student to view attendance, exam marks, assignment submissions and certificates.
+            All students registered in your assigned subjects are listed automatically. Use search to find a particular student.
           </p>
         </div>
       </div>
@@ -95,7 +101,7 @@ export default function FacultyStudentDetails() {
 
       {results.length > 0 && !details && (
         <div className="panel">
-          <div className="ledger-heading"><h2>Search Results</h2><span className="count">{results.length}</span></div>
+          <div className="ledger-heading"><h2>{hasSearched ? 'Search Results' : 'Students in Your Subjects'}</h2><span className="count">{results.length} students</span></div>
           <div style={{ display: 'grid', gap: 8 }}>
             {results.map((student) => (
               <button
@@ -115,8 +121,8 @@ export default function FacultyStudentDetails() {
         </div>
       )}
 
-      {!searching && search.trim() && results.length === 0 && !details && (
-        <div className="panel"><p>No students found.</p></div>
+      {!searching && results.length === 0 && !details && (
+        <div className="panel"><p>{hasSearched ? 'No students match your search.' : 'No students are registered in your assigned subjects yet.'}</p></div>
       )}
 
       {loadingDetails && <div className="panel"><p>Loading student details...</p></div>}
