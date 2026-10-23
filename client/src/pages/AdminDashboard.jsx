@@ -4,28 +4,33 @@ export default function AdminDashboard() {
   const { user } = useAuth();
 
   return (
-    <div>
-      <div className="ledger-heading">
-        <div>
-          <h2>Welcome, {user?.fullName || 'Administrator'}</h2>
-          <p style={{ margin: '6px 0 0', color: 'var(--muted-text)' }}>
-            Use the Menu button to open College Overview and Announcements.
-          </p>
+    <section className="account-dashboard admin-dashboard">
+      <header className="account-dashboard-hero">
+        <p className="account-dashboard-eyebrow">ADMIN PORTAL</p>
+        <h1>Welcome, {user?.fullName || 'Administrator'}</h1>
+        <p className="account-dashboard-description">
+          Manage your college workspace, campus information, announcements and administration tools.
+        </p>
+      </header>
+
+      <section className="account-details-card" aria-labelledby="admin-details-heading">
+        <div className="account-details-heading">
+          <div>
+            <p className="account-details-kicker">YOUR ACCOUNT</p>
+            <h2 id="admin-details-heading">Administrator Details</h2>
+          </div>
+          <span className="account-role-pill">Administrator</span>
         </div>
-      </div>
-
-      <hr className="ledger-rule" />
-
-      <div className="panel">
-        <div className="ledger-heading"><h2>Administrator Details</h2></div>
-        <table className="ledger-table">
-          <tbody>
-            <tr><td><strong>Name</strong></td><td>{user?.fullName || '-'}</td></tr>
-            <tr><td><strong>Email</strong></td><td>{user?.email || '-'}</td></tr>
-            <tr><td><strong>Role</strong></td><td>Administrator</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+        <div className="account-table-wrap">
+          <table className="account-details-table">
+            <tbody>
+              <tr><th scope="row">Name</th><td>{user?.fullName || '-'}</td></tr>
+              <tr><th scope="row">Email</th><td>{user?.email || '-'}</td></tr>
+              <tr><th scope="row">Role</th><td>Administrator</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
   );
 }
